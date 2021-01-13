@@ -35,7 +35,7 @@ module gw_drag
   ! These are the actual switches for different gravity wave sources.
   use phys_control,   only: use_gw_oro, use_gw_front, use_gw_front_igw, &
                             use_gw_convect_dp, use_gw_convect_sh,       &
-                            use_simple_phys              
+                            use_simple_phys
 
   use gw_common,      only: GWBand
   use gw_convect,     only: BeresSourceDesc
@@ -77,7 +77,7 @@ module gw_drag
   real(r8) :: frontgfc = unset_r8
 
   ! Tendency efficiencies.
-
+  
   ! gw_chem scheme  						!MVG 
   logical  :: use_gw_chem          = .false. !namelist switch 
 
@@ -580,6 +580,7 @@ subroutine gw_init()
           'Zonal gravity wave surface stress')
      call addfld ('TAUGWY',     horiz_only,  'A','N/m2', &
           'Meridional gravity wave surface stress')
+     call register_vector_field('TAUGWX', 'TAUGWY')
 
      if (history_amwg) then
         call add_default('TAUGWX  ', 1, ' ')
@@ -667,6 +668,7 @@ subroutine gw_init()
           'Zonal wind profile-entry to GW ' )
      call addfld('VEGW',  (/ 'lev' /) , 'A'  ,'1/s' ,  &
           'Merdional wind profile-entry to GW ' )
+     call register_vector_field('UEGW','VEGW')
      call addfld('TEGW',  (/ 'lev' /) , 'A'  ,'K' ,  &
           'Temperature profile-entry to GW ' )
 
@@ -683,16 +685,19 @@ subroutine gw_init()
           'Ridge based momentum flux profile')
         call addfld('TAU'//cn//'RDGBETAX' , (/ 'ilev' /), 'I', 'N/m2', &
           'Ridge based momentum flux profile')
+        call register_vector_field('TAU'//cn//'RDGBETAX','TAU'//cn//'RDGBETAY')
         call addfld('UT'//cn//'RDGBETA',    (/ 'lev' /),  'I', 'm/s', &
           'U wind tendency from ridge '//cn)
         call addfld('VT'//cn//'RDGBETA',    (/ 'lev' /),  'I', 'm/s', &
           'V wind tendency from ridge '//cn)
+        call register_vector_field('UT'//cn//'RDGBETA','VT'//cn//'RDGBETA')
      end do
 
      call addfld('TAUARDGBETAY' , (/ 'ilev' /) , 'I'  ,'N/m2' , &
           'Ridge based momentum flux profile')
      call addfld('TAUARDGBETAX' , (/ 'ilev' /) , 'I'  ,'N/m2' , &
           'Ridge based momentum flux profile')
+     call register_vector_field('TAUARDGBETAX','TAUARDGBETAY')
 
      if (history_waccm) then
         call add_default('TAUARDGBETAX', 1, ' ')
@@ -770,21 +775,24 @@ subroutine gw_init()
           'U wind tendency from ridge '//cn)
         call addfld('VT'//cn//'RDGGAMMA' , (/ 'lev' /),  'I', 'm/s', &
           'V wind tendency from ridge '//cn)
+        call register_vector_field('UT'//cn//'RDGGAMMA','VT'//cn//'RDGGAMMA')
      end do
 
      call addfld ('TAUARDGGAMMAY' , (/ 'ilev' /) , 'I'  ,'N/m2' , &
           'Ridge based momentum flux profile')
      call addfld ('TAUARDGGAMMAX' , (/ 'ilev' /) , 'I'  ,'N/m2' , &
           'Ridge based momentum flux profile')
+     call register_vector_field('TAUARDGGAMMAX','TAUARDGGAMMAY')
      call addfld ('TAURDGGMX',     horiz_only,  'A','N/m2', &
           'Zonal gravity wave surface stress')
      call addfld ('TAURDGGMY',     horiz_only,  'A','N/m2', &
           'Meridional gravity wave surface stress')
+     call register_vector_field('TAURDGGMX','TAURDGGMY')
      call addfld ('UTRDGGM' , (/ 'lev' /) , 'I'  ,'m/s' , &
           'U wind tendency from ridge 6     ')
      call addfld ('VTRDGGM' , (/ 'lev' /) , 'I'  ,'m/s' , &
-          'U wind tendency from ridge 6     ')
-
+          'V wind tendency from ridge 6     ')
+     call register_vector_field('UTRDGGM','VTRDGGM')
   end if
 
   if (use_gw_front .or. use_gw_front_igw) then
@@ -971,6 +979,9 @@ subroutine gw_init()
 
   call addfld ('UTGW_TOTAL',    (/ 'lev' /), 'A','m/s2', &
        'Total U tendency due to gravity wave drag')
+  call addfld ('VTGW_TOTAL',    (/ 'lev' /), 'A','m/s2', &
+       'Total V tendency due to gravity wave drag')
+  call register_vector_field('UTGW_TOTAL', 'VTGW_TOTAL')
 
   ! Total temperature tendency output.
   call addfld ('TTGW', (/ 'lev' /), 'A', 'K/s',  &
@@ -1014,8 +1025,7 @@ subroutine gw_init()
   end if
 
 
-
-  if (use_gw_chem) then 			!MVG
+ if (use_gw_chem) then 			!MVG
      !total fields across the full GW spectrum 
      call addfld ('k_wave_tot',(/ 'lev' /), 'A','m2/s', &
           'Effective wave diffusivity (over the entire spectrum)')
@@ -1193,7 +1203,6 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
   use physics_types,  only: physics_state_copy, set_dry_to_wet
   use constituents,   only: cnst_type
-  use co2_cycle,      only: co2_cycle_set_cnst_type
   use physics_buffer, only: physics_buffer_desc, pbuf_get_field
   use camsrfexch, only: cam_in_t
   ! Location-dependent cpair
@@ -1205,7 +1214,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   use gw_oro,     only: gw_oro_src
   use gw_front,   only: gw_cm_src
   use gw_convect, only: gw_beres_src
-  use gw_chem     only: effective_gw_diffusivity  !MVG
+  use gw_chem,     only: effective_gw_diffusivity  !MVG
 
   !------------------------------Arguments--------------------------------
   type(physics_state), intent(in) :: state   ! physics state structure
@@ -1353,8 +1362,6 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   real(r8) :: zm(state%ncol,pver)
   real(r8) :: zi(state%ncol,pver+1)
 
-  character(len=3) :: cnst_type_loc(pcnst)        ! local copy of cnst_type
-
   !variables for gw_chem  !MVG 
   real(r8) :: k_wave_tot(state%ncol,pver+1) !total over entire wave spectrum and for all GW sources 
   real(r8) :: xi_tot(state%ncol,pver+1)
@@ -1376,13 +1383,9 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   call physics_state_copy(state, state1)
 
   ! constituents are all treated as wet mmr
-  ! lie about cnst_type of co2_cycle constituents, so that they don't get converted to wet
-  cnst_type_loc(:) = cnst_type(:)
-  call co2_cycle_set_cnst_type(cnst_type_loc, 'wet')
-  call set_dry_to_wet(state1, cnst_type_loc)
+  call set_dry_to_wet(state1)
 
   lchnk = state1%lchnk
-
   ncol  = state1%ncol
 
   p = Coords1D(state1%pint(:ncol,:))
@@ -1963,8 +1966,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
   endif
 
-  ! ptend now has all accumulated tendencies.  Convert the tendencies for the
-  ! dry constituents to dry air basis.
+  ! Convert the tendencies for the dry constituents to dry air basis.
   do m = 1, pcnst
      if (cnst_type(m).eq.'dry') then
         do k = 1, pver
@@ -1980,6 +1982,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   call outfld('TTGW', ptend%s/cpairv(:,:,lchnk),  pcols, lchnk)
  
   call outfld('UTGW_TOTAL', ptend%u, pcols, lchnk)
+  call outfld('VTGW_TOTAL', ptend%v, pcols, lchnk)
 
   call outfld('QTGW', ptend%q(:,:,1), pcols, lchnk)
   call outfld('CLDLIQTGW', ptend%q(:,:,ixcldliq), pcols, lchnk)
@@ -1988,14 +1991,12 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   ! Destroy objects.
   call p%finalize()
 
-
   if (use_gw_chem) then 			!MVG
      ! write totals to history file.
      call outfld ('k_wave_tot', k_wave_tot, ncol, lchnk)
      call outfld ('xi_tot', xi_tot, ncol, lchnk)
      call outfld ('gw_energy_flux_tot', gw_enflux_tot, ncol, lchnk)
- end if
-
+  end if
 
 end subroutine gw_tend
 
@@ -2274,7 +2275,7 @@ end subroutine gw_rdg_calc
 
 ! Add all history fields for a gravity wave spectrum source.
 subroutine gw_spec_addflds(prefix, scheme, band, history_defaults)
-  use cam_history, only: addfld, add_default
+  use cam_history, only: addfld, add_default, register_vector_field
 
   !------------------------------Arguments--------------------------------
 
@@ -2296,7 +2297,8 @@ subroutine gw_spec_addflds(prefix, scheme, band, history_defaults)
   character(len=10) :: dumc1x, dumc1y
   ! Allow 80 chars for description
   character(len=80) dumc2
-  ! name of output variable across secptrum
+
+  ! name of output variable across secptrum !MVG
   character(len=10) :: var_name_at_c_u, var_name_at_c_tau
   ! Allow 80 chars for description
   character(len=80) :: var_descr_u, var_descr_tau
@@ -2308,6 +2310,8 @@ subroutine gw_spec_addflds(prefix, scheme, band, history_defaults)
        trim(scheme)//' U tendency - gravity wave spectrum')
   call addfld (trim(prefix)//'VTGWSPEC',(/ 'lev' /), 'A','m/s2', &
        trim(scheme)//' V tendency - gravity wave spectrum')
+  call register_vector_field(trim(prefix)//'UTGWSPEC',trim(prefix)//'VTGWSPEC')
+
   call addfld (trim(prefix)//'TTGWSPEC',(/ 'lev' /), 'A','K/s', &
        trim(scheme)//' T tendency - gravity wave spectrum')
 
@@ -2369,6 +2373,7 @@ subroutine gw_spec_addflds(prefix, scheme, band, history_defaults)
     var_descr_tau=trim(scheme)//" tau total at c= "//trim(fnum)//" m/s"
     call addfld (trim(var_name_at_c_u),(/ 'lev' /), 'A','m/s2', var_descr_u)
     call addfld (trim(var_name_at_c_tau),(/ 'lev' /), 'A','Pa', var_descr_tau)  
+
   end do
 
   if (history_defaults) then
@@ -2482,6 +2487,7 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, c, u, v, xv, yv, &
   call outfld(trim(prefix)//'TTGWSDF', dttdf / cpair, ncol, lchnk)
   call outfld(trim(prefix)//'TTGWSKE', dttke / cpair, ncol, lchnk)
 
+
   ! Output tau broken down into zonal and meridional components.
 
   taux = 0._r8
@@ -2512,7 +2518,7 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, c, u, v, xv, yv, &
      dummyx = taux(:,l,:)
      dummyy = tauy(:,l,:)
 
-     dumc1x = tau_fld_name(l, prefix, x_not_y=.true.) 
+     dumc1x = tau_fld_name(l, prefix, x_not_y=.true.)
      dumc1y = tau_fld_name(l, prefix, x_not_y=.false.)
 
      call outfld(dumc1x,dummyx,ncol,lchnk)
@@ -2520,13 +2526,14 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, c, u, v, xv, yv, &
 
   enddo
 
-   ! Output wind tendencies associated to each wave (u' tendencies spectrum) and total tau  !! MVG !!
+  ! Output wind tendencies associated to each wave (u' tendencies spectrum) and total tau  !! MVG !!
   do l=-band%ngwv,band%ngwv
     var_name_at_c_u   = var_fld_name(l, prefix, u_tend=.true.)
     var_name_at_c_tau = var_fld_name(l, prefix, u_tend=.false.)
     call outfld(var_name_at_c_u, gwut(:,:,l), ncol, lchnk)
     call outfld(var_name_at_c_tau, tau(:,l,:), ncol, lchnk)
   enddo
+
 
   ! Output momentum flux in each cardinal direction.
   mf = 0._r8
@@ -2647,7 +2654,7 @@ character(len=9) pure function tau_fld_name(l, prefix, x_not_y)
 end function tau_fld_name
 
 !==========================================================================
-
+!MVG
 ! As 'tau_fld_name' but to generate names for different variables
 ! across the spectrum
 character(len=10) pure function var_fld_name(l, prefix, u_tend)

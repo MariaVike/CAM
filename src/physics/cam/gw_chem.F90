@@ -7,8 +7,6 @@ module gw_chem
 
 use gw_utils,  only: r8
 use coords_1d, only: Coords1D
-use gw_common, only: GWBand, pver
-use physconst, only: cpair, cpairv, gravit
 
 implicit none
 private
@@ -20,16 +18,19 @@ public :: effective_gw_diffusivity
 ! gas consant for dry air (m2 K-1 s-2)
 real(r8), parameter :: R_air = 287._r8
 
+contains
+
 !==========================================================================
 
-subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt, &
+subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt,      &
               t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux, &
               k_wave_atc, xi_atc, gw_enflux_atc, egwdffi_atc)
 !-----------------------------------------------------------------------
 ! Compute K_wave (wave effective diffusivity) etc...
 ! ....
 !-----------------------------------------------------------------------
-
+use gw_common, only: GWBand, pver
+use physconst, only: cpair, cpairv, gravit
 !------------------------------Arguments--------------------------------
   ! Column dimension.
   integer, intent(in) :: ncol
@@ -76,12 +77,7 @@ subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt, &
   ! 
   !real(r8) ::
 
-  ! Specific heat of dry air, constant pressure.
-  real(r8), parameter :: cpair
-  ! composition dependent specific heat at constant pressure
-  real(r8), parameter :: cpairv
-  !g
-  real(r8), parameter :: gravit
+
 
 
   k_wave=5
