@@ -1031,7 +1031,7 @@ subroutine gw_init()
           'Effective wave diffusivity (over the entire spectrum)')
      call addfld ('xi_tot',(/ 'lev' /)  ,  'A',' ', &
           'Instability parameter (Xi_tot) (over the entire spectrum)')
-     call addfld ('gw_energy_flux_tot', (/ 'lev' /), 'A','m/s', &
+     call addfld ('gw_enflux_tot', (/ 'lev' /), 'A','m/s', &
           'Vertical gravity wave energy flux (over the entire spectrum)')
  end if
 
@@ -1475,8 +1475,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
      if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
-              t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux, &
-              k_wave_atc, xi_atc, gw_enflux_atc, egwdffi_atc)
+              t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux)
 
  	do k = 1, pver+1 !add up contributions from all GWs sources
            k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
@@ -1484,11 +1483,12 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
  	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
 
-	!define outputs as a function of frequencies and GW sources (N.B. this is a copy of gw_spec_addflds but for gw_chem outputs, can be merged into one subroutine later using a logical switch)
+	!define outputs as a function of GW sources (N.B. this is a copy of gw_spec_addflds 
+        !but for gw_chem outputs, can be merged into one subroutine later using a logical switch)
         !call gw_chem_addflds(prefix=beres_dp_pf, scheme="Beres (deep)", &
         !     band=band_mid, history_defaults=history_waccm)
 
-        !write in history 
+        !write in history file
 	!call gw_chem_outflds(beres_dp_pf, lchnk, ncol, band_mid, c, k_wave, &
         !     xi, gw_enflux, egwdffi)
 
@@ -1990,7 +1990,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
      ! write totals to history file.
      call outfld ('k_wave_tot', k_wave_tot, ncol, lchnk)
      call outfld ('xi_tot', xi_tot, ncol, lchnk)
-     call outfld ('gw_energy_flux_tot', gw_enflux_tot, ncol, lchnk)
+     call outfld ('gw_enflux_tot', gw_enflux_tot, ncol, lchnk)
   end if
 
 end subroutine gw_tend

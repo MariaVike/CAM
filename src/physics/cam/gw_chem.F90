@@ -23,8 +23,7 @@ contains
 !==========================================================================
 
 subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt,      &
-              t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux, &
-              k_wave_atc, xi_atc, gw_enflux_atc, egwdffi_atc)
+              t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux)
 !-----------------------------------------------------------------------
 ! Compute K_wave (wave effective diffusivity) etc...
 ! ....
@@ -59,11 +58,6 @@ use physconst, only: cpair, cpairv, gravit
   real(r8), intent(out) :: k_wave(ncol,pver+1) !total over entire wave spectrum for each GW source (i.e. Beres and C&M)
   real(r8), intent(out) :: xi(ncol,pver+1)
   real(r8), intent(out) :: gw_enflux(ncol,pver+1)
-
-  real(r8), intent(out) :: k_wave_atc(ncol,-band%ngwv:band%ngwv,pver+1) ! functions of wave-frequency
-  real(r8), intent(out) :: xi_atc(ncol,-band%ngwv:band%ngwv,pver+1)
-  real(r8), intent(out) :: gw_enflux_atc(ncol,-band%ngwv:band%ngwv,pver+1)
-  real(r8), intent(out) :: egwdffi_atc(ncol,-band%ngwv:band%ngwv,pver+1)
 
   
   !---------------------------Local storage-------------------------------
