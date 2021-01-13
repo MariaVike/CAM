@@ -1371,11 +1371,6 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   real(r8) :: xi(state%ncol,pver+1)
   real(r8) :: gw_enflux(state%ncol,pver+1)
 
-  real(r8), allocatable :: k_wave_atc(:,:,:) ! functions of wave-frequency
-  real(r8), allocatable :: xi_atc(:,:,:)
-  real(r8), allocatable :: gw_enflux_atc(:,:,:)
-  real(r8), allocatable :: egwdffi_atc(:,:,:)  
-
 
   !------------------------------------------------------------------------
 
@@ -1495,7 +1490,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
         !write in history 
 	!call gw_chem_outflds(beres_dp_pf, lchnk, ncol, band_mid, c, k_wave, &
-        !     xi, gw_enflux, k_wave_atc, xi_atc, gw_enflux_atc, egwdffi_atc)
+        !     xi, gw_enflux, egwdffi)
 
     endif
 
