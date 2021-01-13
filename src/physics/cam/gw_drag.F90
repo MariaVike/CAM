@@ -79,7 +79,7 @@ module gw_drag
   ! Tendency efficiencies.
 
   ! gw_chem scheme  						!MVG 
-  logical  :: use_gw_chem          = .true. !namelist switch 
+  logical  :: use_gw_chem          = .false. !namelist switch 
 
   ! Ridge scheme.
   logical  :: use_gw_rdg_beta      = .false.
@@ -235,7 +235,7 @@ subroutine gw_drag_readnl(nlfile)
        rdg_gamma_cd_llb, trpd_leewv_rdg_gamma, bnd_rdggm, &
        gw_oro_south_fac, gw_limit_tau_without_eff, &
        gw_lndscl_sgh, gw_prndl, gw_apply_tndmax, gw_qbo_hdepth_scaling, &
-       gw_top_taper !, use_gw_chem !MVG
+       gw_top_taper, use_gw_chem !MVG
   !----------------------------------------------------------------------
 
   if (use_simple_phys) return
@@ -336,8 +336,8 @@ subroutine gw_drag_readnl(nlfile)
   call mpi_bcast(gw_drag_file_sh, len(gw_drag_file_sh), mpi_character, mstrid, mpicom, ierr)
   if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: gw_drag_file_sh")
 
-  !call mpi_bcast(use_gw_chem, 1, mpi_logical, mstrid, mpicom, ierr) !MVG
-  !if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: use_gw_chem")
+  call mpi_bcast(use_gw_chem, 1, mpi_logical, mstrid, mpicom, ierr) !MVG
+  if (ierr /= 0) call endrun(sub//": FATAL: mpi_bcast: use_gw_chem")
 
 
   ! Check if fcrit2 was set.

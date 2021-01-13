@@ -1419,6 +1419,13 @@ to reduce undesired effects of gravity waves in the thermosphere/ionosphere.
 Default: set by build-namelist
 </entry>
 
+<entry id="use_gw_chem" type="logical" category="gw_drag"
+       group="gw_drag_nl" valid_values="" >
+Whether or not to use the gw_chem.F90 module.
+Default: set by build-namelist
+</entry>
+
+
 <!-- Gravity Wave Ridge -->
 
 <entry id="gw_rdg_do_divstream" type="logical" category="gw_rdg"
