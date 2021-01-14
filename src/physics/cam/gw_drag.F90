@@ -1475,7 +1475,8 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
      if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
-              t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux)
+             t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux,        &
+             zm, zi)
 
  	do k = 1, pver+1 !add up contributions from all GWs sources
            k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
