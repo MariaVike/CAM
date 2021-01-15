@@ -69,13 +69,13 @@ use gw_utils, only: midpoint_interp
   integer :: k, l
   ! Gas consant for dry air (m2 K-1 s-2)
   real(r8), parameter :: R_air = 287._r8
-  ! Adiabatic lapse rate 
-  real(r8), parameter :: gamma_ad=gravit/cpair
-  real(r8), parameter :: r_cp= R_air/cpair
+  ! Adiabatic lapse rate and R/cp ratio
+  real(r8) :: gamma_ad, r_cp 
   ! Interface temperature.
   real(r8) :: ti(ncol,pver+1)
   ! The vertical wavelength and the lmbd_h/lmbd_z ratio
-  real(r8) :: lambda_z, lambda_ratio
+  real(r8) :: lambda_z(ncol,-band%ngwv:band%ngwv,pver+1) 
+  real(r8) :: lambda_ratio(ncol,-band%ngwv:band%ngwv,pver+1) 
   ! The absolute momenum flux compute from tau
   real(r8) :: MF(ncol,-band%ngwv:band%ngwv,pver+1)
   ! GW intrinsic frequency 
@@ -90,15 +90,17 @@ use gw_utils, only: midpoint_interp
   real(r8):: Hp(ncol,pver+1)
   ! energy term part of the computation for the energy flux
   real(r8):: energy(ncol,pver+1)
-  ! Temporary values for computing vertical derviatives
-  real(r8):: dtdp, dtdz
   ! Temporary values used for calculations
-  real(r8) :: frq_n, frq_m, m_sq, gw_t_sq 
-  real(r8) :: a, b, one_plus_xi, one_min_xi
-     
+  real(r8), dimension(ncol, -band%ngwv:band%ngwv,pver+1) ::  frq_n, frq_m, &
+				      			     m_sq, gw_t_sq, a
+  real(r8), dimension(ncol,pver+1) :: b
+  real(r8), dimension(ncol, pver)  :: dtdp, dtdz, one_plus_xi, one_min_xi
 
  logical  :: pressure_coords = .True. 
 
+ !compute adiabatic lapserate and R/Cp ratio
+ gamma_ad=gravit/cpair
+ r_cp= R_air/cpair
  !compute temperature at interface (call function)
   ti(:,2:pver)=midpoint_interp(t)
  
@@ -119,9 +121,9 @@ use gw_utils, only: midpoint_interp
   do l = -band%ngwv, band%ngwv
         !use MF to compute T' using the polar eqs and dispersion 
         !rels for mid-freq Gws (see e.g. see Ern et al 2004)
-        lambda_z= 2._r8*pi/m(:,l, k)
-        lambda_ratio=lambda_z/lambda_h
-        gw_t(:,l,k)= MF(:,l,k)/(0.5*rhoi(:,k)*lambda_ratio*(gravit/ni(:,k)*ti(:,k)) )**0.5 ! MF and T' are computed at interfaces (k+1/2)
+        lambda_z(:,l, k)= 2._r8*pi/m(:,l, k)
+        lambda_ratio(:,l, k)=lambda_z(:,l, k)/lambda_h
+        gw_t(:,l,k)= MF(:,l,k)/(0.5*rhoi(:,k)*lambda_ratio(:,l, k)*(gravit/ni(:,k)*ti(:,k)) )**0.5 ! MF and T' are computed at interfaces (k+1/2)
         !compute Var(dT'/dz)
         var_t(:,k)= var_t(:,k)+ (m(:,l,k)**2)*(gw_t(:,l,k)**2)*0.5        
   enddo 
@@ -131,14 +133,14 @@ use gw_utils, only: midpoint_interp
  !use model pressure coords
  if (pressure_coords) then
    do k = 2, pver
-      dtdp=t(:,k)-t(:,k-1) * p%rdst(:,k-1)    !using model pressure coords (p%rdst=1/Delta_p)
-      xi(:,k)= var_t(:,k)/(gamma_ad+dtdp)**2  !we are using t at mid-points so value is at interface
+      dtdp(:,k)=t(:,k)-t(:,k-1) * p%rdst(:,k-1)    !using model pressure coords (p%rdst=1/Delta_p)
+      xi(:,k)= var_t(:,k)/(gamma_ad+dtdp(:,k))**2  !we are using t at mid-points so value is at interface
    enddo
  else
  !or z coordinates
    do k = pver,1,-1
-      dtdz=t(:,k)-t(:,k+1)/zm(:,k)-zm(:,k+1)
-      xi(:,k)= var_t(:,k)/(gamma_ad+dtdz)**2
+      dtdz(:,k)=t(:,k)-t(:,k+1)/zm(:,k)-zm(:,k+1)
+      xi(:,k)= var_t(:,k)/(gamma_ad+dtdz(:,k))**2
    enddo
  endif
 
@@ -147,35 +149,37 @@ use gw_utils, only: midpoint_interp
   energy=0.
   Hp(:,k)= R_air*ti(:,k)/gravit
   do l = -band%ngwv, band%ngwv
-     frq_n=gw_freq(:,l)**2/ni(:,k)**2
-     frq_m=gw_freq(:,l)/m(:,l,k)
-     m_sq=m(:,l,k)**2
-     gw_t_sq=gw_t(:,l,k)**2
-     a=(1-2*r_cp*gw_freq(:,l)**2)/ni(:,k)**2
-     b=2*Hp(:,k)
-     energy(:,k)=energy(:,k) + (1-frq_n)*frq_m*( (m_sq*gw_t_sq*0.5)/(m_sq+a**2/b**2) )
+     frq_n(:,l,k)=gw_frq(:,l)**2/ni(:,k)**2
+     frq_m(:,l,k)=gw_frq(:,l)/m(:,l,k)
+     m_sq(:,l,k)=m(:,l,k)**2
+     gw_t_sq(:,l,k)=gw_t(:,l,k)**2
+     a(:,l,k)=(1-2*r_cp*gw_frq(:,l)**2)/ni(:,k)**2
+     b(:,k)=2*Hp(:,k)
+     energy(:,k)=energy(:,k) + (1-frq_n(:,l,k))*frq_m(:,l,k)* & 
+	        ( (m_sq(:,l,k)*gw_t_sq(:,l,k)*0.5)/(m_sq(:,l,k)+ & 
+	        a(:,l,k)**2/b(:,k)**2) )
   enddo
  enddo
 
  if (pressure_coords) then
    do k = 2, pver  
-    dtdp=t(:,k)-t(:,k-1) * p%rdst(:,k-1)
-    gw_enflux(:,k)= (1/Hp(:,k)*gamma_ad+dtdp**2)*energy(:,k)
+    dtdp(:,k)=t(:,k)-t(:,k-1) * p%rdst(:,k-1)
+    gw_enflux(:,k)= (1/Hp(:,k)*gamma_ad+dtdp(:,k)**2)*energy(:,k)
    enddo
  else
  !or z coordinates
    do k = pver,1,-1
-      dtdz=t(:,k)-t(:,k+1)/zm(:,k)-zm(:,k+1)
-      gw_enflux(:,k)= (1/Hp(:,k)*gamma_ad+dtdz**2)*energy(:,k)
+      dtdz(:,k)=t(:,k)-t(:,k+1)/zm(:,k)-zm(:,k+1)
+      gw_enflux(:,k)= (1/Hp(:,k)*gamma_ad+dtdz(:,k)**2)*energy(:,k)
    enddo
  endif
 
  !Finally compute k_wave
  do k = 1, pver
-    one_plus_xi=1+xi(:,k)
-    one_min_xi =1-xi(:,k)    
-    k_wave(:,k)=(one_plus_xi/one_min_xi)*xi(:,k)*egwdffi(:,k)+ & 
-                (1-r_cp/one_min_xi)*gw_enflux(:,k)
+    one_plus_xi(:,k)=1+xi(:,k)
+    one_min_xi(:,k) =1-xi(:,k)    
+    k_wave(:,k)=(one_plus_xi(:,k)/one_min_xi(:,k))*xi(:,k)*egwdffi(:,k)+ & 
+                (1-r_cp/one_min_xi(:,k))*gw_enflux(:,k)
  enddo
   
 
