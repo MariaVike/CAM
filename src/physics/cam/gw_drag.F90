@@ -851,6 +851,13 @@ subroutine gw_init()
      call gw_spec_addflds(prefix=cm_pf, scheme="C&M", band=band_mid, &
           history_defaults=history_waccm)
 
+     !MVG
+     !define outputs as a function of GW sources for gw_chem terms (N.B. this is a copy of gw_spec_addflds 
+     !but for gw_chem outputs, can be merged into one subroutine later using a logical switch)
+     if (use_gw_chem) then
+     call gw_chem_addflds(prefix='C', scheme="C&M", &
+             		  band=band_mid, history_defaults=history_waccm)
+
   end if
 
   if (use_gw_front_igw) then
@@ -872,6 +879,8 @@ subroutine gw_init()
      ! Output for gravity waves from frontogenesis.
      call gw_spec_addflds(prefix=cm_igw_pf, scheme="C&M IGW", &
           band=band_long, history_defaults=history_waccm)
+
+     endif
 
   end if
 
@@ -914,6 +923,12 @@ subroutine gw_init()
           'Max column heating rate')
      call addfld ('HDEPTH',horiz_only,    'A','km', &
           'Heating Depth')
+     !MVG
+     !define outputs as a function of GW sources for gw_chem terms
+     if (use_gw_chem) then
+     call gw_chem_addflds(prefix=beres_dp_pf, scheme="Beres (deep)", &
+             		  band=band_mid, history_defaults=history_waccm)
+     endif
 
      if (history_waccm) then
         call add_default('NETDT    ', 1, ' ')
@@ -961,6 +976,13 @@ subroutine gw_init()
           'Max column heating rate')
      call addfld ('SHDEPTH',horiz_only,    'A','km', &
           'Heating Depth')
+
+     !MVG
+     !define outputs as a function of GW sources for gw_chem terms
+     if (use_gw_chem) then
+     call gw_chem_addflds(prefix=beres_sh_pf, scheme="Beres (shallow)", &
+             		  band=band_mid, history_defaults=history_waccm)
+     endif
 
      if (history_waccm) then
         call add_default('SNETDT   ', 1, ' ')
@@ -1214,7 +1236,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   use gw_oro,     only: gw_oro_src
   use gw_front,   only: gw_cm_src
   use gw_convect, only: gw_beres_src
-  use gw_chem,     only: effective_gw_diffusivity  !MVG
+  use gw_chem,    only: effective_gw_diffusivity  !MVG
 
   !------------------------------Arguments--------------------------------
   type(physics_state), intent(in) :: state   ! physics state structure
@@ -1370,8 +1392,6 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   real(r8) :: k_wave(state%ncol,pver+1) !total over entire wave spectrum for each GW source (i.e. Beres and C&M)
   real(r8) :: xi(state%ncol,pver+1)
   real(r8) :: gw_enflux(state%ncol,pver+1)
-  !MVG re-declare history_waccm in gw_tend as we use it later in gw_chem_addflds
-  logical :: history_waccm
 
   !------------------------------------------------------------------------
 
@@ -1485,15 +1505,9 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
  	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
 
-	!define outputs as a function of GW sources (N.B. this is a copy of gw_spec_addflds 
-        !but for gw_chem outputs, can be merged into one subroutine later using a logical switch)
-        call gw_chem_addflds(prefix=beres_dp_pf, scheme="Beres (deep)", &
-             		     band=band_mid, history_defaults=history_waccm)
-
         !write in history file
 	call gw_chem_outflds(beres_dp_pf, lchnk, ncol, k_wave, &
              	  	     xi, gw_enflux, egwdffi)
-
      endif
 
      ! Project stress into directional components.
@@ -1591,11 +1605,6 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 	   xi_tot(:,k) = xi_tot(:,k) + xi(:,k)
  	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
-
-	!define outputs as a function of GW sources (N.B. this is a copy of gw_spec_addflds 
-        !but for gw_chem outputs, can be merged into one subroutine later using a logical switch)
-        call gw_chem_addflds(prefix=beres_sh_pf, scheme="Beres (shallow)", &
-             		     band=band_mid, history_defaults=history_waccm)
 
         !write in history file
 	call gw_chem_outflds(beres_sh_pf, lchnk, ncol, k_wave, &
@@ -1699,13 +1708,8 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
  	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
 
-	!define outputs as a function of GW sources (N.B. this is a copy of gw_spec_addflds 
-        !but for gw_chem outputs, can be merged into one subroutine later using a logical switch)
-        call gw_chem_addflds(prefix='CM', scheme="C&M", &
-             		     band=band_mid, history_defaults=history_waccm)
-
         !write in history file
-	call gw_chem_outflds(cm_pf, lchnk, ncol, k_wave, &
+	call gw_chem_outflds('C', lchnk, ncol, k_wave, &
              	  	     xi, gw_enflux, egwdffi)
 
      endif
@@ -2754,15 +2758,15 @@ subroutine gw_chem_addflds(prefix, scheme, band, history_defaults)
   !-----------------------------------------------------------------------
 
   ! Overall wind tendencies.
-  call addfld (trim(prefix)//'k_wave',(/ 'lev' /), 'A','m2/s', &
-       trim(scheme)//'Effective wave diffusivity')
-  call addfld (trim(prefix)//'xi',(/ 'lev' /), 'A','', &
-       trim(scheme)//'Instability parameter')
-  call addfld (trim(prefix)//'gw_enflux',(/ 'lev' /), 'A','m/s', &
-       trim(scheme)//'Vertical gravity wave energy flux')
+  call addfld (trim(prefix)//'_k_wave',(/ 'lev' /), 'A','m2/s', &
+       trim(scheme)//' Effective wave diffusivity')
+  call addfld (trim(prefix)//'_xi',(/ 'lev' /), 'A','', &
+       trim(scheme)//' Instability parameter')
+  call addfld (trim(prefix)//'_gw_enflux',(/ 'lev' /), 'A','m/s', &
+       trim(scheme)//' Vertical gravity wave energy flux')
 
   call addfld (trim(prefix)//'_EKGW',(/ 'ilev' /), 'A','m2/s', &
-       trim(scheme)//'Effective Kzz due to diffusion by gravity waves')
+       trim(scheme)//' Effective Kzz due to diffusion by gravity waves')
 
 end subroutine gw_chem_addflds
 
@@ -2784,9 +2788,9 @@ subroutine gw_chem_outflds(prefix, lchnk, ncol,  k_wave, &
 
   real(r8), intent(in) :: egwdffi(ncol,pver+1)
 
-  call outfld(trim(prefix)//'k_wave', k_wave, ncol, lchnk)
-  call outfld(trim(prefix)//'xi', xi, ncol, lchnk)
-  call outfld(trim(prefix)//'gw_enflux', gw_enflux, ncol, lchnk)
+  call outfld(trim(prefix)//'_k_wave', k_wave, ncol, lchnk)
+  call outfld(trim(prefix)//'_xi', xi, ncol, lchnk)
+  call outfld(trim(prefix)//'_gw_enflux', gw_enflux, ncol, lchnk)
  
   call outfld(trim(prefix)//'_EKGW', egwdffi, ncol, lchnk)
 

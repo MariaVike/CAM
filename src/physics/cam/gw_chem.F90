@@ -7,8 +7,10 @@ module gw_chem
 ! eddy diffusivity (Kzz) and of thevariances of the temperature and lapse rate fluctuations
 !
 
-use gw_utils,  only: r8
-use coords_1d, only: Coords1D
+use gw_utils,     only: r8
+use coords_1d,    only: Coords1D
+use spmd_utils,   only: masterproc
+use cam_logfile,  only: iulog
 
 implicit none
 private
@@ -103,6 +105,12 @@ use gw_utils, only: midpoint_interp
  r_cp= R_air/cpair
  !compute temperature at interface (call function)
   ti(:,2:pver)=midpoint_interp(t)
+
+ !if (masterproc) then
+ !       write (iulog,*) 'cpair=', cpair
+ !       write (iulog,*) 'g=', gravit
+ !       write (iulog,*) 'gamma_ad & r_cp', gamma_ad, r_cp
+ !  end if
  
  !compute a few quantities needed for the computation of K_wave
  do k = 1, pver+1 
