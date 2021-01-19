@@ -1494,6 +1494,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
           ttgw, qtgw, egwdffi,  gwut, dttdf, dttke,            &
           lapply_effgw_in=gw_apply_tndmax)
 
+
      if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
              t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux,        &
@@ -2578,7 +2579,6 @@ subroutine gw_spec_outflds(prefix, lchnk, ncol, band, c, u, v, xv, yv, &
     call outfld(var_name_at_c_u, gwut(:,:,l), ncol, lchnk)
     call outfld(var_name_at_c_tau, tau(:,l,:), ncol, lchnk)
   enddo
-
 
   ! Output momentum flux in each cardinal direction.
   mf = 0._r8

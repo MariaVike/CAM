@@ -7,6 +7,10 @@ module gw_common
 use gw_utils, only: r8
 use coords_1d, only: Coords1D
 
+!MVG!
+use spmd_utils,   only: masterproc
+use cam_logfile,  only: iulog
+!!
 
 implicit none
 private
