@@ -1385,13 +1385,13 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   real(r8) :: zi(state%ncol,pver+1)
 
   !variables for gw_chem  !MVG 
-  real(r8) :: k_wave_tot(state%ncol,pver+1) !total over entire wave spectrum and for all GW sources 
-  real(r8) :: xi_tot(state%ncol,pver+1)
-  real(r8) :: gw_enflux_tot(state%ncol,pver+1)
+  real(r8) :: k_wave_tot(state%ncol,pver) !total over entire wave spectrum and for all GW sources 
+  real(r8) :: xi_tot(state%ncol,pver)
+  real(r8) :: gw_enflux_tot(state%ncol,pver)
 
-  real(r8) :: k_wave(state%ncol,pver+1) !total over entire wave spectrum for each GW source (i.e. Beres and C&M)
-  real(r8) :: xi(state%ncol,pver+1)
-  real(r8) :: gw_enflux(state%ncol,pver+1)
+  real(r8) :: k_wave(state%ncol,pver) !total over entire wave spectrum for each GW source (i.e. Beres and C&M)
+  real(r8) :: xi(state%ncol,pver)
+  real(r8) :: gw_enflux(state%ncol,pver)
 
   !------------------------------------------------------------------------
 
@@ -2039,9 +2039,10 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
   if (use_gw_chem) then 			!MVG
      ! write totals to history file.
-     call outfld ('k_wave_tot', k_wave_tot, ncol, lchnk)
-     call outfld ('xi_tot', xi_tot, ncol, lchnk)
-     call outfld ('gw_enflux_tot', gw_enflux_tot, ncol, lchnk)
+     !N.B. exclude model top k=1 where tau is almost zero and xi,k_wave and enflux are unphysically high
+     call outfld ('k_wave_tot', k_wave_tot(:,2:), ncol, lchnk)
+     call outfld ('xi_tot', xi_tot(:,2:), ncol, lchnk)
+     call outfld ('gw_enflux_tot', gw_enflux_tot(:,2:), ncol, lchnk)
   end if
 
 end subroutine gw_tend
@@ -2782,15 +2783,15 @@ subroutine gw_chem_outflds(prefix, lchnk, ncol,  k_wave, &
   integer, intent(in) :: lchnk
   integer, intent(in) :: ncol
   
-  real(r8), intent(out) :: k_wave(ncol,pver) 
-  real(r8), intent(out) :: xi(ncol,pver)
-  real(r8), intent(out) :: gw_enflux(ncol,pver)
+  real(r8), intent(in) :: k_wave(ncol,pver) 
+  real(r8), intent(in) :: xi(ncol,pver)
+  real(r8), intent(in) :: gw_enflux(ncol,pver)
 
   real(r8), intent(in) :: egwdffi(ncol,pver+1)
 
-  call outfld(trim(prefix)//'_k_wave', k_wave, ncol, lchnk)
-  call outfld(trim(prefix)//'_xi', xi, ncol, lchnk)
-  call outfld(trim(prefix)//'_gw_enflux', gw_enflux, ncol, lchnk)
+  call outfld(trim(prefix)//'_k_wave', k_wave(:,2:), ncol, lchnk)
+  call outfld(trim(prefix)//'_xi', xi(:,2:), ncol, lchnk)
+  call outfld(trim(prefix)//'_gw_enflux', gw_enflux(:,2:), ncol, lchnk)
  
   call outfld(trim(prefix)//'_EKGW', egwdffi, ncol, lchnk)
 
