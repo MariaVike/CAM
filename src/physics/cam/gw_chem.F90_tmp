@@ -213,40 +213,32 @@ use gw_utils, only: midpoint_interp
  endif
 
  !Finally compute k_wave
-   do k = 1, pver
-      one_plus_xi(:,k)=1+xi(:,k)
-      one_min_xi(:,k) =1-xi(:,k)    
-      k_wave(:,k)=(one_plus_xi(:,k)/one_min_xi(:,k))*xi(:,k)*egwdffi(:,k)+ & 
-                  (1-r_cp/one_min_xi(:,k))*gw_enflux(:,k)
-   enddo
+ do k = 1, pver
+    one_plus_xi(:,k)=1+xi(:,k)
+    one_min_xi(:,k) =1-xi(:,k)    
+    k_wave(:,k)=(one_plus_xi(:,k)/one_min_xi(:,k))*xi(:,k)*egwdffi(:,k)+ & 
+                (1-r_cp/one_min_xi(:,k))*gw_enflux(:,k)
+ enddo 
 
-   !set variables at model top (k=1) to be zero. Here tau is almost zero and
-   !xi,k_wave and enflux are unphysically high (this causes a problem with the
-   !netcdf output files. The writer cannot deal with such high values)
-   !N.B. tau is set to zero at k=1 if tau_0_ubc=.True.
-   k_wave(:,1)=0._r8
-   xi(:,1)=0._r8
-   gw_enflux(:,1)=0._r8
-
-!IF (masterproc) then
-!       do i=1,ncol
-!        do k = 1, pver+1
-!         do l = -band%ngwv, band%ngwv 
-!           if (tau(i,l,k) .gt. 0) then
-!		write(iulog,*)  'i,l,k =', i,l,k
-!          	write (iulog,*) 'TAU in gw_chem', tau(i,l,k)
-!          	write (iulog,*) 'MF', mom_flux(i,l,k)
-!                write (iulog,*) 'gw_t', gw_t(i,l,k)
-!          	write (iulog,*) 'var_t=', var_t(i,k)
-!		write (iulog,*) 'energy=', energy(i,k)
-!		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
-!		write (iulog,*) 'xi=', xi(i,k)
-!		write (iulog,*) 'k_wave=', k_wave(i,k)     		
-!          endif
-!         enddo
-!        enddo
-!      enddo
-! END IF 
+IF (masterproc) then
+       do i=1,ncol
+        do k = 1, pver+1
+         do l = -band%ngwv, band%ngwv 
+           if (tau(i,l,k) .gt. 0) then
+		write(iulog,*)  'i,l,k =', i,l,k
+          	write (iulog,*) 'TAU in gw_chem', tau(i,l,k)
+          	write (iulog,*) 'MF', mom_flux(i,l,k)
+                write (iulog,*) 'gw_t', gw_t(i,l,k)
+          	write (iulog,*) 'var_t=', var_t(i,k)
+		write (iulog,*) 'energy=', energy(i,k)
+		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
+		write (iulog,*) 'xi=', xi(i,k)
+		write (iulog,*) 'k_wave=', k_wave(i,k)     		
+          endif
+         enddo
+        enddo
+      enddo
+ END IF 
 
 end subroutine effective_gw_diffusivity
 
