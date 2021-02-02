@@ -24,7 +24,7 @@ contains
 !==========================================================================
 
 subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt,    &
-           t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux,  &
+           t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,  &
            zm, zi)
 !-----------------------------------------------------------------------
 ! Compute K_wave (wave effective diffusivity) etc...
@@ -50,6 +50,8 @@ use gw_utils, only: midpoint_interp
   real(r8), intent(in) :: rhoi(ncol,pver+1)
   ! Midpoint and interface Brunt-Vaisalla frequencies.
   real(r8), intent(in) :: nm(ncol,pver), ni(ncol,pver+1)
+  ! Projection of wind at interfaces.
+  real(r8), intent(in) :: ubi(ncol,pver+1)
   ! Wave phase speeds for each column.
   real(r8), intent(in) :: c(ncol,-band%ngwv:band%ngwv)
   ! Wave Reynolds stress.
@@ -81,7 +83,9 @@ use gw_utils, only: midpoint_interp
   ! The absolute momenum flux compute from tau
   real(r8) :: mom_flux(ncol,-band%ngwv:band%ngwv,pver+1)
   ! GW intrinsic frequency 
-  real(r8):: gw_frq(ncol,-band%ngwv:band%ngwv) 
+  real(r8):: gw_frq(ncol,-band%ngwv:band%ngwv, pver+1)
+  ! GW intrinsic phase speed
+  real(r8):: c_i(ncol,-band%ngwv:band%ngwv,pver+1)
   ! Vertical wavenumber m
   real(r8):: m(ncol,-band%ngwv:band%ngwv,pver+1) 
   ! GW temperature perturbation
@@ -105,63 +109,77 @@ use gw_utils, only: midpoint_interp
  r_cp= R_air/cpair
  !compute temperature at interface (call function)
   ti(:,2:pver)=midpoint_interp(t)
-
  
  !compute a few quantities needed for the computation of K_wave
+do i=1,ncol
  do k = 1, pver+1 
   do l = -band%ngwv, band%ngwv
         !compute the momentum flux MF (m2/s2) from the wave stress tau (Pa)
-         mom_flux(:,l,k)=tau(:,l,k)/rhoi(:,k)     
+         mom_flux(i,l,k)=tau(i,l,k)/rhoi(i,k)     
 
-	!for c=0 (i.e. l=0) set the intrinsic wave frq and m to zero, to avoid
-	!generations of NaNs and divisions by zero later on
-         if (l .ne. 0) then
-          gw_frq(:,l)=abs(c(:,l))/lambda_h
-          m(:,l,k)=(ni(:,k)**2 + band%kwv**2 /gw_frq(:,l)**2)**0.5  
+	 !compute gw intrinsic frequency and vertical wavenumber
+         c_i(i,l,k)=c(i,l)-ubi(i,k) 
+
+         if (c_i(i,l,k) .ne. 0) then
+           gw_frq(i,l,k)=c_i(i,l,k)/lambda_h
+           m(i,l,k)=(ni(i,k)**2 + band%kwv**2 /gw_frq(i,l,k)**2)**0.5
          else
-          gw_frq(:,l)=0._r8  
-	  m(:,l,k)=0._r8
-        endif
+         ! at critical levels where c_i=0 (i.e. c=ubi) tau=0
+	 ! set everything else to zero too otherwise in the
+	 ! computation of m we get division by zeros and generation of NaNs and Inf
+          gw_frq(i,l,k)=0._r8  
+	  m(i,l,k)=0._r8
+         endif
       
   enddo
  enddo
+enddo
 
 
  !compute Xi_inst = Var(dT'/dz)/(gamma_ad + dT/dz)**2
+do i=1,ncol
  do k = 1, pver+1
-  var_t(:,k)=0._r8
+  var_t(i,k)=0._r8
   do l = -band%ngwv, band%ngwv
 
-      !as before for c=0 set the contribution from that wave frequency to var_t to zero
-      if (l .ne. 0) then           
-	lambda_z(:,l, k)= 2._r8*pi/m(:,l, k)
-        lambda_ratio(:,l, k)=lambda_z(:,l, k)/lambda_h
+      !as before for critical levels where c_i=0 and thus gw_freq=0 
+       if (gw_frq(i,l,k) .ne. 0._r8) then           
+	lambda_z(i,l, k)= 2._r8*pi/m(i,l, k)
+        lambda_ratio(i,l, k)=lambda_z(i,l, k)/lambda_h
 
 	!use MF (m2/s2) to compute T' (K) using the polar eqs and dispersion 
         !rels for mid-freq Gws (see e.g. see Ern et al 2004)
-        g_NT_sq(:,k)= (gravit/ni(:,k)*ti(:,k))**2
-        gw_t(:,l,k)= (mom_flux(:,l,k)/(0.5*lambda_ratio(:,l, k)*g_NT_sq(:,k)) )**0.5 ! MF and T' are computed at interfaces (k+1/2)
+        g_NT_sq(i,k)= (gravit/ni(i,k)*ti(i,k))**2
+        gw_t(i,l,k)= (mom_flux(i,l,k)/(0.5*lambda_ratio(i,l, k)*g_NT_sq(i,k)) )**0.5 ! MF and T' are computed at interfaces (k+1/2)
 
         !compute Var(dT'/dz)
-        var_t(:,k)= var_t(:,k)+ (m(:,l,k)**2)*(gw_t(:,l,k)**2)*0.5
+        var_t(i,k)= var_t(i,k)+ (m(i,l,k)**2)*(gw_t(i,l,k)**2)*0.5
      else
-        var_t(:,k)= var_t(:,k)+ 0._r8
+        var_t(i,k)= var_t(i,k)+ 0._r8
      endif
            
 
 	!if (masterproc) then 
+        !if (l .eq. 0) then
 	!write(iulog,*)  'i,l,k =', i,l,k
         !write(iulog,*) 'TAU in gw_chem', tau(:,l,k)
         !write(iulog,*) 'MF', mom_flux(:,l,k)
         !write(iulog,*) 'gw_t', gw_t(:,l,k)
+        !write(iulog,*) 'c', c(:,l)
+        !write(iulog,*) 'ubi', ubi(:,k)
+        !write(iulog,*) 'ci', c_i(:,l,k)
+        !write(iulog,*) 'm', m(:,l,k)
+	!write(iulog,*) 'band%kwv', band%kwv
 	!write(iulog,*)  'var_t', var_t(:,k)
-        !write(iulog,*)  'm2', (m(:,l,k)**2)
+        !!write(iulog,*)  'm2', (m(:,l,k)**2)
         !write(iulog,*)  '(gw_t2)*0.5',(gw_t(:,l,k)**2)*0.5 
         !write(iulog,*)  'var_t + m2*(gw_t2)*0.5', var_t(:,k)+ (m(:,l,k)**2)*(gw_t(:,l,k)**2)*0.5  
         !endif
+	!endif
 
   enddo 
- enddo  
+ enddo 
+enddo 
 
  !use model pressure coords
  if (pressure_coords) then
@@ -178,37 +196,39 @@ use gw_utils, only: midpoint_interp
  endif
 
  !compute energy_flux
+do i=1,ncol
  do k = 1, pver+1
   energy(:,k)=0._r8
   Hp(:,k)= R_air*ti(:,k)/gravit
   do l = -band%ngwv, band%ngwv
-     !as before for c=0
-     if (l .ne. 0) then   
-       frq_n(:,l,k)=gw_frq(:,l)**2/ni(:,k)**2
-       frq_m(:,l,k)=gw_frq(:,l)/m(:,l,k)    
-       m_sq(:,l,k)=m(:,l,k)**2
-       gw_t_sq(:,l,k)=gw_t(:,l,k)**2
-       a(:,l,k)=(1-2*r_cp*gw_frq(:,l)**2)/ni(:,k)**2
-       b(:,k)=2*Hp(:,k)
-       energy(:,k)=energy(:,k) + (1-frq_n(:,l,k))*frq_m(:,l,k)* & 
-	        ( (m_sq(:,l,k)*gw_t_sq(:,l,k)*0.5)/(m_sq(:,l,k)+ & 
-	        a(:,l,k)**2/b(:,k)**2) )
+     !as before for c_i=0
+     if (gw_frq(i,l,k) .ne. 0._r8) then   
+       frq_n(i,l,k)=gw_frq(i,l,k)**2/ni(i,k)**2
+       frq_m(i,l,k)=gw_frq(i,l,k)/m(i,l,k)    
+       m_sq(i,l,k)=m(i,l,k)**2
+       gw_t_sq(i,l,k)=gw_t(i,l,k)**2
+       a(i,l,k)=(1-2*r_cp*gw_frq(i,l,k)**2)/ni(i,k)**2
+       b(i,k)=2*Hp(i,k)
+       energy(i,k)=energy(i,k) + (1-frq_n(i,l,k))*frq_m(i,l,k)* & 
+	        ( (m_sq(i,l,k)*gw_t_sq(i,l,k)*0.5)/(m_sq(i,l,k)+ & 
+	        a(i,l,k)**2/b(i,k)**2) )
       else 
-       energy(:,k)=energy(:,k) + 0._r8
+       energy(i,k)=energy(i,k) + 0._r8
       endif 
   enddo
  enddo
+enddo
 
  if (pressure_coords) then
    do k = 2, pver  
     dtdp(:,k)=t(:,k)-t(:,k-1) * p%rdst(:,k-1)
-    gw_enflux(:,k)= (1/Hp(:,k)*gamma_ad+dtdp(:,k)**2)*energy(:,k)
+    gw_enflux(:,k)= (1/Hp(:,k)*(gamma_ad+dtdp(:,k))**2)*energy(:,k)
    enddo
  else
  !or z coordinates
    do k = pver-1,1,-1
       dtdz(:,k)=t(:,k)-t(:,k+1)/zm(:,k)-zm(:,k+1)
-      gw_enflux(:,k)= (1/Hp(:,k)*gamma_ad+dtdz(:,k)**2)*energy(:,k)
+      gw_enflux(:,k)= (1/Hp(:,k)*(gamma_ad+dtdz(:,k))**2)*energy(:,k)
    enddo
  endif
 
@@ -233,7 +253,11 @@ use gw_utils, only: midpoint_interp
 !        do k = 1, pver+1
 !         do l = -band%ngwv, band%ngwv 
 !           if (tau(i,l,k) .gt. 0) then
-!		write(iulog,*)  'i,l,k =', i,l,k
+!		write (iulog,*)  'i,l,k =', i,l,k
+!		write (iulog,*)  'ci', c_i(i,l,k)
+!		write (iulog,*)  'gw_freq', gw_frq(i,l,k)
+!		write (iulog,*)  'c', c(i,l)
+!		write (iulog,*)  'ubi', ubi(i,k)
 !          	write (iulog,*) 'TAU in gw_chem', tau(i,l,k)
 !          	write (iulog,*) 'MF', mom_flux(i,l,k)
 !                write (iulog,*) 'gw_t', gw_t(i,l,k)
@@ -246,7 +270,7 @@ use gw_utils, only: midpoint_interp
 !         enddo
 !        enddo
 !      enddo
-! END IF 
+!END IF 
 
 end subroutine effective_gw_diffusivity
 

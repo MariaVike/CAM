@@ -1053,7 +1053,7 @@ subroutine gw_init()
           'Effective wave diffusivity (over the entire spectrum)')
      call addfld ('xi_tot',(/ 'lev' /)  ,  'A',' ', &
           'Instability parameter (Xi_tot) (over the entire spectrum)')
-     call addfld ('gw_enflux_tot', (/ 'lev' /), 'A','m/s', &
+     call addfld ('gw_enflux_tot', (/ 'lev' /), 'A','m2/s', &
           'Vertical gravity wave energy flux (over the entire spectrum)')
  end if
 
@@ -1497,7 +1497,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
      if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
-             t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux,        &
+             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,        &
              zm, zi)
 
  	do k = 1, pver !add up contributions from all GWs sources
@@ -1598,7 +1598,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
      if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
-             t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux,        &
+             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,        &
              zm, zi)
 
  	do k = 1, pver !add up contributions from all GWs sources
@@ -1700,7 +1700,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
     if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
-             t, rhoi, nm, ni, c, tau, egwdffi, k_wave, xi, gw_enflux,        &
+             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,        &
              zm, zi)
 
  	do k = 1, pver !add up contributions from all GWs sources
@@ -2762,7 +2762,7 @@ subroutine gw_chem_addflds(prefix, scheme, band, history_defaults)
        trim(scheme)//' Effective wave diffusivity')
   call addfld (trim(prefix)//'_xi',(/ 'lev' /), 'A','', &
        trim(scheme)//' Instability parameter')
-  call addfld (trim(prefix)//'_gw_enflux',(/ 'lev' /), 'A','m/s', &
+  call addfld (trim(prefix)//'_gw_enflux',(/ 'lev' /), 'A','m2/s', &
        trim(scheme)//' Vertical gravity wave energy flux')
 
   call addfld (trim(prefix)//'_EKGW',(/ 'ilev' /), 'A','m2/s', &
