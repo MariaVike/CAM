@@ -120,8 +120,8 @@ do i=1,ncol
 	 !compute gw intrinsic frequency and vertical wavenumber
          c_i(i,l,k)=c(i,l)-ubi(i,k) 
 
-         if (c_i(i,l,k) .ne. 0._r8) then
-           gw_frq(i,l,k)=c_i(i,l,k)/lambda_h
+         if (c_i(i,l,k) .ne. 0) then
+           gw_frq(i,l,k)=abs(c_i(i,l,k))/lambda_h
            m(i,l,k)= (ni(i,k)*band%kwv)/gw_frq(i,l,k)
          else
          ! at critical levels where c_i=0 (i.e. c=ubi) tau=0
@@ -144,7 +144,7 @@ do i=1,ncol
 
       !as before for critical levels where c_i=0 and thus gw_freq=0 
        if (gw_frq(i,l,k) .ne. 0._r8) then           
-	lambda_z(i,l, k)= (2._r8*pi)/m(i,l, k)
+	lambda_z(i,l, k)= (2._r8*pi)/m(i,l,k)
         lambda_ratio(i,l, k)=lambda_z(i,l, k)/lambda_h
 
 	!use MF (m2/s2) to compute T' (K) using the polar eqs and dispersion 
@@ -248,31 +248,34 @@ enddo
    xi(:,1)=0._r8
    gw_enflux(:,1)=0._r8
 
-IF (masterproc) then
-       do i=1,ncol
-        do k = 1, pver+1
-         do l = -band%ngwv, band%ngwv 
-           if (tau(i,l,k) .gt. 0) then
-		write (iulog,*)  'i,l,k =', i,l,k
+!IF (masterproc) then
+!       do i=1,ncol
+!        do k = 1, pver+1
+!         do l = -band%ngwv, band%ngwv 
+!           if (tau(i,l,k) .gt. 0) then
+!		write (iulog,*)  'i,l,k =', i,l,k
 !		write (iulog,*)  'ci', c_i(i,l,k)
 !		write (iulog,*)  'gw_freq', gw_frq(i,l,k)
 !		write (iulog,*)  'c', c(i,l)
 !		write (iulog,*)  'ubi', ubi(i,k)
-          	write (iulog,*) 'TAU in gw_chem', tau(i,l,k)
-          	write (iulog,*) 'MF', mom_flux(i,l,k)
-                write (iulog,*) 'gw_t', gw_t(i,l,k)
-          	write (iulog,*) 'var_t=', var_t(i,k)
-          	write (iulog,*) 'm=',  m(i,l,k)
-          	write (iulog,*) 'dtdz', dtdz(i,k)
-		write (iulog,*) 'energy=', energy(i,k)
-		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
-		write (iulog,*) 'xi=', xi(i,k)
-		write (iulog,*) 'k_wave=', k_wave(i,k)     		
-          endif
-         enddo
-        enddo
-      enddo
-END IF 
+!          	write (iulog,*) 'TAU in gw_chem', tau(i,l,k)
+!          	write (iulog,*) 'MF', mom_flux(i,l,k)
+!                write (iulog,*) 'gw_t=', gw_t(i,l,k)
+!          	write (iulog,*) 'var_t=', var_t(i,k)
+!          	write (iulog,*) 'temp & N=',  ti(i,k), ni(i,k)
+!          	write (iulog,*) 'm sq=',  m(i,l,k)
+!		write (iulog,*) 'lambda_z=', lambda_z(i,l,k)
+!		write (iulog,*) 'g_NT_sq=', g_NT_sq(i,k)
+!          	write (iulog,*) 'dtdz', dtdz(i,k)
+!		write (iulog,*) 'energy=', energy(i,k)
+!		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
+!		write (iulog,*) 'xi=', xi(i,k)
+!		write (iulog,*) 'k_wave=', k_wave(i,k)     		
+!          endif
+!         enddo
+!        enddo
+!      enddo
+!END IF 
 
 
 end subroutine effective_gw_diffusivity
