@@ -120,9 +120,9 @@ do i=1,ncol
 	 !compute gw intrinsic frequency and vertical wavenumber
          c_i(i,l,k)=c(i,l)-ubi(i,k) 
 
-         if (c_i(i,l,k) .ne. 0) then
+         if (c_i(i,l,k) .ne. 0._r8) then
            gw_frq(i,l,k)=c_i(i,l,k)/lambda_h
-           m(i,l,k)=(ni(i,k)**2 + band%kwv**2 /gw_frq(i,l,k)**2)**0.5
+           m(i,l,k)= (ni(i,k)*band%kwv)/gw_frq(i,l,k)
          else
          ! at critical levels where c_i=0 (i.e. c=ubi) tau=0
 	 ! set everything else to zero too otherwise in the
@@ -144,16 +144,16 @@ do i=1,ncol
 
       !as before for critical levels where c_i=0 and thus gw_freq=0 
        if (gw_frq(i,l,k) .ne. 0._r8) then           
-	lambda_z(i,l, k)= 2._r8*pi/m(i,l, k)
+	lambda_z(i,l, k)= (2._r8*pi)/m(i,l, k)
         lambda_ratio(i,l, k)=lambda_z(i,l, k)/lambda_h
 
 	!use MF (m2/s2) to compute T' (K) using the polar eqs and dispersion 
         !rels for mid-freq Gws (see e.g. see Ern et al 2004)
-        g_NT_sq(i,k)= (gravit/ni(i,k)*ti(i,k))**2
-        gw_t(i,l,k)= (mom_flux(i,l,k)/(0.5*lambda_ratio(i,l, k)*g_NT_sq(i,k)) )**0.5 ! MF and T' are computed at interfaces (k+1/2)
+        g_NT_sq(i,k)= ( gravit/(ni(i,k)*ti(i,k)) )**2.
+        gw_t(i,l,k)= ( mom_flux(i,l,k)/(0.5*lambda_ratio(i,l,k)*g_NT_sq(i,k)) )**0.5 ! MF and T' are computed at interfaces (k+1/2)
 
         !compute Var(dT'/dz)
-        var_t(i,k)= var_t(i,k)+ (m(i,l,k)**2)*(gw_t(i,l,k)**2)*0.5
+        var_t(i,k)= var_t(i,k)+ (m(i,l,k)**2.)*(gw_t(i,l,k)**2.)*0.5
      else
         var_t(i,k)= var_t(i,k)+ 0._r8
      endif
@@ -184,34 +184,34 @@ enddo
  !use model pressure coords
  if (pressure_coords) then
    do k = 2, pver
-      dtdp(:,k)=t(:,k)-t(:,k-1) * p%rdst(:,k-1)    !using model pressure coords (p%rdst=1/Delta_p)
-      xi(:,k)= var_t(:,k)/(gamma_ad+dtdp(:,k))**2  !we are using t at mid-points so value is at interface
+      dtdp(:,k)=(t(:,k)-t(:,k-1)) * p%rdst(:,k-1)    !using model pressure coords (p%rdst=1/Delta_p)
+      xi(:,k)= var_t(:,k)/(gamma_ad+dtdp(:,k))**2.  !we are using t at mid-points so value is at interface
    enddo
  else
  !or z coordinates
    do k = pver-1,1,-1
-      dtdz(:,k)=t(:,k)-t(:,k+1)/zm(:,k)-zm(:,k+1)
-      xi(:,k)= var_t(:,k)/(gamma_ad+dtdz(:,k))**2
+      dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1))
+      xi(:,k)= var_t(:,k)/(gamma_ad+dtdz(:,k))**2.
    enddo
  endif
 
  !compute energy_flux
 do i=1,ncol
  do k = 1, pver+1
-  energy(:,k)=0._r8
-  Hp(:,k)= R_air*ti(:,k)/gravit
+  energy(i,k)=0._r8
+  Hp(i,k)= (R_air*ti(i,k))/gravit
   do l = -band%ngwv, band%ngwv
      !as before for c_i=0
      if (gw_frq(i,l,k) .ne. 0._r8) then   
-       frq_n(i,l,k)=gw_frq(i,l,k)**2/ni(i,k)**2
+       frq_n(i,l,k)=gw_frq(i,l,k)**2./ni(i,k)**2.
        frq_m(i,l,k)=gw_frq(i,l,k)/m(i,l,k)    
-       m_sq(i,l,k)=m(i,l,k)**2
-       gw_t_sq(i,l,k)=gw_t(i,l,k)**2
-       a(i,l,k)=(1-2*r_cp*gw_frq(i,l,k)**2)/ni(i,k)**2
-       b(i,k)=2*Hp(i,k)
+       m_sq(i,l,k)=m(i,l,k)**2.
+       gw_t_sq(i,l,k)=gw_t(i,l,k)**2.
+       a(i,l,k)=(1._r8-2._r8*r_cp*(gw_frq(i,l,k))**2.)/ni(i,k)**2.
+       b(i,k)=2._r8*Hp(i,k)
        energy(i,k)=energy(i,k) + (1-frq_n(i,l,k))*frq_m(i,l,k)* & 
 	        ( (m_sq(i,l,k)*gw_t_sq(i,l,k)*0.5)/(m_sq(i,l,k)+ & 
-	        a(i,l,k)**2/b(i,k)**2) )
+	        a(i,l,k)**2./b(i,k)**2.) )
       else 
        energy(i,k)=energy(i,k) + 0._r8
       endif 
@@ -221,23 +221,23 @@ enddo
 
  if (pressure_coords) then
    do k = 2, pver  
-    dtdp(:,k)=t(:,k)-t(:,k-1) * p%rdst(:,k-1)
-    gw_enflux(:,k)= (1/Hp(:,k)*(gamma_ad+dtdp(:,k))**2)*energy(:,k)
+    dtdp(:,k)=(t(:,k)-t(:,k-1)) * p%rdst(:,k-1)
+    gw_enflux(:,k)= ( 1._r8/( Hp(:,k)*(gamma_ad+dtdp(:,k))**2.) ) *energy(:,k)
    enddo
  else
  !or z coordinates
    do k = pver-1,1,-1
-      dtdz(:,k)=t(:,k)-t(:,k+1)/zm(:,k)-zm(:,k+1)
-      gw_enflux(:,k)= (1/Hp(:,k)*(gamma_ad+dtdz(:,k))**2)*energy(:,k)
+      dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1))
+      gw_enflux(:,k)= ( 1._r8/( Hp(:,k)*(gamma_ad+dtdz(:,k))**2. ) ) *energy(:,k)
    enddo
  endif
 
  !Finally compute k_wave
    do k = 1, pver
-      one_plus_xi(:,k)=1+xi(:,k)
-      one_min_xi(:,k) =1-xi(:,k)    
+      one_plus_xi(:,k)=1._r8+xi(:,k)
+      one_min_xi(:,k) =1._r8-xi(:,k)    
       k_wave(:,k)=(one_plus_xi(:,k)/one_min_xi(:,k))*xi(:,k)*egwdffi(:,k)+ & 
-                  (1-r_cp/one_min_xi(:,k))*gw_enflux(:,k)
+                  ( (1._r8-r_cp)/one_min_xi(:,k) )*gw_enflux(:,k)
    enddo
 
    !set variables at model top (k=1) to be zero. Here tau is almost zero and
@@ -248,29 +248,32 @@ enddo
    xi(:,1)=0._r8
    gw_enflux(:,1)=0._r8
 
-!IF (masterproc) then
-!       do i=1,ncol
-!        do k = 1, pver+1
-!         do l = -band%ngwv, band%ngwv 
-!           if (tau(i,l,k) .gt. 0) then
-!		write (iulog,*)  'i,l,k =', i,l,k
+IF (masterproc) then
+       do i=1,ncol
+        do k = 1, pver+1
+         do l = -band%ngwv, band%ngwv 
+           if (tau(i,l,k) .gt. 0) then
+		write (iulog,*)  'i,l,k =', i,l,k
 !		write (iulog,*)  'ci', c_i(i,l,k)
 !		write (iulog,*)  'gw_freq', gw_frq(i,l,k)
 !		write (iulog,*)  'c', c(i,l)
 !		write (iulog,*)  'ubi', ubi(i,k)
-!          	write (iulog,*) 'TAU in gw_chem', tau(i,l,k)
-!          	write (iulog,*) 'MF', mom_flux(i,l,k)
-!                write (iulog,*) 'gw_t', gw_t(i,l,k)
-!          	write (iulog,*) 'var_t=', var_t(i,k)
-!		write (iulog,*) 'energy=', energy(i,k)
-!		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
-!		write (iulog,*) 'xi=', xi(i,k)
-!		write (iulog,*) 'k_wave=', k_wave(i,k)     		
-!          endif
-!         enddo
-!        enddo
-!      enddo
-!END IF 
+          	write (iulog,*) 'TAU in gw_chem', tau(i,l,k)
+          	write (iulog,*) 'MF', mom_flux(i,l,k)
+                write (iulog,*) 'gw_t', gw_t(i,l,k)
+          	write (iulog,*) 'var_t=', var_t(i,k)
+          	write (iulog,*) 'm=',  m(i,l,k)
+          	write (iulog,*) 'dtdz', dtdz(i,k)
+		write (iulog,*) 'energy=', energy(i,k)
+		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
+		write (iulog,*) 'xi=', xi(i,k)
+		write (iulog,*) 'k_wave=', k_wave(i,k)     		
+          endif
+         enddo
+        enddo
+      enddo
+END IF 
+
 
 end subroutine effective_gw_diffusivity
 
