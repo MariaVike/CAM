@@ -230,6 +230,7 @@ enddo
  !or z coordinates
    do k = pver-1,1,-1
       dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1))
+      dtdz(:,k)=dtdz(:,k)*1000. !convert K/m to K/km
       gw_enflux(:,k)= ( 1._r8/( Hp(:,k)*(gamma_ad+dtdz(:,k))**2. ) ) *energy(:,k)
    enddo
  endif
