@@ -104,8 +104,8 @@ use gw_utils, only: midpoint_interp
 
  logical  :: pressure_coords = .False. 
 
- !compute adiabatic lapserate and R/Cp ratio
- gamma_ad=gravit/cpair
+ !compute adiabatic lapse rate(K/m) and R/Cp ratio
+ gamma_ad=(gravit/cpair)*1000.
  r_cp= R_air/cpair
  !compute temperature at interface (call function)
   ti(:,2:pver)=midpoint_interp(t)
@@ -153,7 +153,8 @@ do i=1,ncol
         gw_t(i,l,k)= ( mom_flux(i,l,k)/(0.5*lambda_ratio(i,l,k)*g_NT_sq(i,k)) )**0.5 ! MF and T' are computed at interfaces (k+1/2)
 
         !compute Var(dT'/dz)
-        var_t(i,k)= var_t(i,k)+ (m(i,l,k)**2.)*(gw_t(i,l,k)**2.)*0.5
+        var_t(i,k)= var_t(i,k)+ 0.5*m(i,l,k)**2.*gw_t(i,l,k)**2.
+	var_t(i,k)= var_t(i,k)*1000. !convert K/m to K/km
      else
         var_t(i,k)= var_t(i,k)+ 0._r8
      endif
@@ -184,14 +185,15 @@ enddo
  !use model pressure coords
  if (pressure_coords) then
    do k = 2, pver
-      dtdp(:,k)=(t(:,k)-t(:,k-1)) * p%rdst(:,k-1)    !using model pressure coords (p%rdst=1/Delta_p)
-      xi(:,k)= var_t(:,k)/(gamma_ad+dtdp(:,k))**2.  !we are using t at mid-points so value is at interface
+      dtdp(:,k)=(t(:,k)-t(:,k-1)) * p%rdst(:,k-1)  !using model pressure coords (p%rdst=1/Delta_p)
+      xi(:,k)= var_t(:,k)/(gamma_ad+dtdp(:,k))**2. !we are using t at mid-points so value is at interface
    enddo
  else
  !or z coordinates
    do k = pver-1,1,-1
       dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1))
-      xi(:,k)= var_t(:,k)/(gamma_ad+dtdz(:,k))**2.
+      dtdz(:,k)=dtdz(:,k)*1000. !convert K/m to K/km
+      xi(:,k)= var_t(:,k)/(gamma_ad+dtdz(:,k))**2. 
    enddo
  endif
 
@@ -205,13 +207,13 @@ do i=1,ncol
      if (gw_frq(i,l,k) .ne. 0._r8) then   
        frq_n(i,l,k)=gw_frq(i,l,k)**2./ni(i,k)**2.
        frq_m(i,l,k)=gw_frq(i,l,k)/m(i,l,k)    
-       m_sq(i,l,k)=m(i,l,k)**2.
-       gw_t_sq(i,l,k)=gw_t(i,l,k)**2.
-       a(i,l,k)=(1._r8-2._r8*r_cp*(gw_frq(i,l,k))**2.)/ni(i,k)**2.
+       !m_sq(i,l,k)=m(i,l,k)**2.
+       !gw_t_sq(i,l,k)=gw_t(i,l,k)**2.
+       a(i,l,k)=1._r8-2._r8*r_cp*(gw_frq(i,l,k))**2./ni(i,k)**2.
        b(i,k)=2._r8*Hp(i,k)
-       energy(i,k)=energy(i,k) + (1-frq_n(i,l,k))*frq_m(i,l,k)* & 
-	        ( (m_sq(i,l,k)*gw_t_sq(i,l,k)*0.5)/(m_sq(i,l,k)+ & 
-	        a(i,l,k)**2./b(i,k)**2.) )
+       energy(i,k)=energy(i,k) + (1._r8-frq_n(i,l,k))*frq_m(i,l,k)* &
+	        ( ((m_sq(i,l,k)*gw_t_sq(i,l,k)*0.5)*1000.)/( (m_sq(i,l,k)+ &  !convert var_t (=m2*T'*0.5) to K/km
+	        a(i,l,k)**2.)/b(i,k)**2. ) )
       else 
        energy(i,k)=energy(i,k) + 0._r8
       endif 
@@ -248,12 +250,13 @@ enddo
    xi(:,1)=0._r8
    gw_enflux(:,1)=0._r8
 
-!IF (masterproc) then
-!       do i=1,ncol
-!        do k = 1, pver+1
-!         do l = -band%ngwv, band%ngwv 
-!           if (tau(i,l,k) .gt. 0) then
-!		write (iulog,*)  'i,l,k =', i,l,k
+IF (masterproc) then
+       do i=1,ncol
+        do k = 1, pver+1
+         do l = -band%ngwv, band%ngwv 
+           if (tau(i,l,k) .gt. 0) then
+		if (k .eq. 15) then
+		write (iulog,*)  'i,l,k =', i,l,k
 !		write (iulog,*)  'ci', c_i(i,l,k)
 !		write (iulog,*)  'gw_freq', gw_frq(i,l,k)
 !		write (iulog,*)  'c', c(i,l)
@@ -263,19 +266,22 @@ enddo
 !                write (iulog,*) 'gw_t=', gw_t(i,l,k)
 !          	write (iulog,*) 'var_t=', var_t(i,k)
 !          	write (iulog,*) 'temp & N=',  ti(i,k), ni(i,k)
-!          	write (iulog,*) 'm sq=',  m(i,l,k)
+!          	write (iulog,*) 'm =',  m(i,l,k)
 !		write (iulog,*) 'lambda_z=', lambda_z(i,l,k)
 !		write (iulog,*) 'g_NT_sq=', g_NT_sq(i,k)
-!          	write (iulog,*) 'dtdz', dtdz(i,k)
-!		write (iulog,*) 'energy=', energy(i,k)
-!		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
-!		write (iulog,*) 'xi=', xi(i,k)
-!		write (iulog,*) 'k_wave=', k_wave(i,k)     		
-!          endif
-!         enddo
-!        enddo
-!      enddo
-!END IF 
+!		write (iulog,*) 't & zm=', t(i,k), zm(i,k)
+!          	write (iulog,*) 'gamma_ad & dtdz', gamma_ad, dtdz(i,k)
+		write (iulog,*) 'energy=', energy(i,k)
+		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
+		write (iulog,*) 'gw_enflux/(g/N2)', gw_enflux(i,k)/(gravit/ni(i,k)**2.)
+		write (iulog,*) 'xi=', xi(i,k)
+		write (iulog,*) 'k_wave=', k_wave(i,k) 
+               	endif	
+          endif
+         enddo
+        enddo
+      enddo
+END IF 
 
 
 end subroutine effective_gw_diffusivity
