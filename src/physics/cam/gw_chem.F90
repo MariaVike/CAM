@@ -154,8 +154,7 @@ do i=1,ncol
 
         !compute Var(dT'/dz)
         var_t(i,k)= var_t(i,k)+ 0.5*m(i,l,k)**2.*gw_t(i,l,k)**2.
-	var_t(i,k)= var_t(i,k)*1000. !convert K/m to K/km
-     else
+     else !set contribution to total variance zero
         var_t(i,k)= var_t(i,k)+ 0._r8
      endif
            
@@ -192,7 +191,8 @@ enddo
  !or z coordinates
    do k = pver-1,1,-1
       dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1))
-      dtdz(:,k)=dtdz(:,k)*1000. !convert K/m to K/km
+      var_t(:,k)= var_t(:,k)*1000. !convert var(dT'/dz) and gamma_ad to K/km
+      dtdz(:,k)=dtdz(:,k)*1000.    !for the computation of xi
       xi(:,k)= var_t(:,k)/(gamma_ad+dtdz(:,k))**2. 
    enddo
  endif
@@ -251,13 +251,13 @@ enddo
    xi(:,1)=0._r8
    gw_enflux(:,1)=0._r8
 
-IF (masterproc) then
-       do i=1,ncol
-        do k = 1, pver+1
-         do l = -band%ngwv, band%ngwv 
-           if (tau(i,l,k) .gt. 0) then
-		if (k .eq. 15) then
-		write (iulog,*)  'i,l,k =', i,l,k
+!IF (masterproc) then
+!       do i=1,ncol
+!        do k = 1, pver+1
+!         do l = -band%ngwv, band%ngwv 
+!           if (tau(i,l,k) .gt. 0) then
+!		if (k .eq. 15) then
+!		write (iulog,*)  'i,l,k =', i,l,k
 !		write (iulog,*)  'ci', c_i(i,l,k)
 !		write (iulog,*)  'gw_freq', gw_frq(i,l,k)
 !		write (iulog,*)  'c', c(i,l)
@@ -272,17 +272,17 @@ IF (masterproc) then
 !		write (iulog,*) 'g_NT_sq=', g_NT_sq(i,k)
 !		write (iulog,*) 't & zm=', t(i,k), zm(i,k)
 !          	write (iulog,*) 'gamma_ad & dtdz', gamma_ad, dtdz(i,k)
-		write (iulog,*) 'energy=', energy(i,k)
-		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
-		write (iulog,*) 'gw_enflux/(g/N2)', gw_enflux(i,k)/(gravit/ni(i,k)**2.)
-		write (iulog,*) 'xi=', xi(i,k)
-		write (iulog,*) 'k_wave=', k_wave(i,k) 
-               	endif	
-          endif
-         enddo
-        enddo
-      enddo
-END IF 
+!		write (iulog,*) 'energy=', energy(i,k)
+!		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
+!		write (iulog,*) 'gw_enflux/(g/N2)', gw_enflux(i,k)/(gravit/ni(i,k)**2.)
+!		write (iulog,*) 'xi=', xi(i,k)
+!		write (iulog,*) 'k_wave=', k_wave(i,k) 
+!               	endif	
+!          endif
+!         enddo
+!        enddo
+!      enddo
+!END IF 
 
 
 end subroutine effective_gw_diffusivity
