@@ -207,8 +207,8 @@ do i=1,ncol
      if (gw_frq(i,l,k) .ne. 0._r8) then   
        frq_n(i,l,k)=gw_frq(i,l,k)**2./ni(i,k)**2.
        frq_m(i,l,k)=gw_frq(i,l,k)/m(i,l,k)    
-       !m_sq(i,l,k)=m(i,l,k)**2.
-       !gw_t_sq(i,l,k)=gw_t(i,l,k)**2.
+       m_sq(i,l,k)=m(i,l,k)**2.
+       gw_t_sq(i,l,k)=gw_t(i,l,k)**2.
        a(i,l,k)=1._r8-2._r8*r_cp*(gw_frq(i,l,k))**2./ni(i,k)**2.
        b(i,k)=2._r8*Hp(i,k)
        energy(i,k)=energy(i,k) + (1._r8-frq_n(i,l,k))*frq_m(i,l,k)* &
