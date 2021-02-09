@@ -704,6 +704,32 @@ subroutine gw_init()
         call add_default('TAUARDGBETAY  ', 1, ' ')
      end if
 
+     !MVG
+     if (use_gw_chem) then
+      !add values for each peaks 
+      do i = 1, 6
+        write(cn, '(i1)') i
+        call addfld('k_wave_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A','m2/s', &
+          'Effective wave diffusivity orography')
+        call addfld('xi_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A',' ', &
+          'Instability parameter (Xi) orography')
+	call addfld('gw_enflux_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A',' m2/s', &
+          'Vertical gravity wave energy flux orography')
+	call addfld ('EKGW_orog'//cn//'RDGBETA', (/ 'ilev' /), 'A','M2/S', &
+          'Effective Kzz orography')
+      end do
+      !add totals across orographic spectrum
+      call addfld ('k_wave_orog_tot_BETA',(/ 'lev' /), 'A','m2/s', &
+          'Effective wave diffusivity orography')
+      call addfld ('xi_orog_tot_BETA',(/ 'lev' /)  ,  'A',' ', &
+          'Instability parameter (Xi) orography')
+      call addfld ('gw_enflux_orog_tot_BETA', (/ 'lev' /), 'A','m2/s', &
+          'Vertical gravity wave energy flux orography')
+      call addfld ('EKGW_orog_tot_BETA' ,(/ 'ilev' /), 'A','M2/S', &
+          'Effective Kzz orography')
+
+     end if
+
   end if
 
   if (use_gw_rdg_gamma) then
@@ -858,7 +884,7 @@ subroutine gw_init()
      call gw_chem_addflds(prefix='C', scheme="C&M", &
              		  band=band_mid, history_defaults=history_waccm)
 
-  end if
+     end if
 
   if (use_gw_front_igw) then
 
@@ -1971,7 +1997,31 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
      call outfld('VEGW', v ,  ncol, lchnk)
      call outfld('TEGW', t ,  ncol, lchnk)
 
-     call gw_rdg_calc(&
+     IF (use_gw_chem) then !MVG
+ 
+        call gw_rdg_calc(&
+        'BETA ', ncol, lchnk, n_rdg_beta, dt,     &
+        u, v, t, p, piln, zm, zi,                 &
+        nm, ni, rhoi, kvtt, q, dse,               &
+        effgw_rdg_beta, effgw_rdg_beta_max,       &
+        hwdth, clngt, gbxar, mxdis, angll, anixy, &
+        rdg_beta_cd_llb, trpd_leewv_rdg_beta,     &
+        ptend, flx_heat, k_wave, xi, gw_enflux, egwdffi, &
+        use_gw_chem=use_gw_chem)
+
+        do k = 1, pver !add up contributions from all GWs sources
+           k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
+	   xi_tot(:,k) = xi_tot(:,k) + xi(:,k)
+ 	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
+        enddo
+
+        !add the diffusion coefficients
+        do k = 1, pver+1
+         egwdffi_tot(:,k) = egwdffi_tot(:,k) + egwdffi(:,k)
+        end do
+
+     ELSE
+      call gw_rdg_calc(&
         'BETA ', ncol, lchnk, n_rdg_beta, dt,     &
         u, v, t, p, piln, zm, zi,                 &
         nm, ni, rhoi, kvtt, q, dse,               &
@@ -1979,6 +2029,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
         hwdth, clngt, gbxar, mxdis, angll, anixy, &
         rdg_beta_cd_llb, trpd_leewv_rdg_beta,     &
         ptend, flx_heat)
+    ENDIF
 
   end if
 
@@ -2056,11 +2107,16 @@ subroutine gw_rdg_calc( &
    hwdth, clngt, gbxar, &
    mxdis, angll, anixy, &
    rdg_cd_llb, trpd_leewv, &
-   ptend, flx_heat)
+   ptend, flx_heat, &
+   k_wave_orog_tot, xi_orog_tot, &
+   gw_enflux_orog_tot, egwdffi_orog_tot, &
+   use_gw_chem) !MVG optional arguments for gw_chem
 
    use coords_1d,  only: Coords1D
    use gw_rdg,     only: gw_rdg_src, gw_rdg_belowpeak, gw_rdg_break_trap, gw_rdg_do_vdiff
    use gw_common,  only: gw_drag_prof, energy_change
+   use gw_chem,    only: effective_gw_diffusivity  !MVG
+   use physconst,  only:  pi
 
    character(len=5), intent(in) :: type         ! BETA or GAMMA
    integer,          intent(in) :: ncol         ! number of atmospheric columns
@@ -2099,6 +2155,18 @@ subroutine gw_rdg_calc( &
    type(physics_ptend), intent(inout):: ptend   ! Parameterization net tendencies.
 
    real(r8),        intent(out) :: flx_heat(pcols)
+
+  !variables for gw_chem  !MVG 
+  logical,  intent(in), optional  :: use_gw_chem 
+  real(r8), intent(out), optional :: k_wave_orog_tot(ncol,pver) !total over full orography spectrum 
+  real(r8), intent(out), optional :: xi_orog_tot(ncol,pver)
+  real(r8), intent(out), optional :: gw_enflux_orog_tot(ncol,pver)
+  real(r8), intent(out), optional :: egwdffi_orog_tot(ncol,pver+1)
+
+  real(r8) :: k_wave_orog(ncol,pver) !values for individual ridges
+  real(r8) :: xi_orog(ncol,pver)
+  real(r8) :: gw_enflux_orog(ncol,pver)
+  real(r8) :: egwdffi_orog(ncol,pver+1)
 
    !---------------------------Local storage-------------------------------
 
@@ -2209,6 +2277,11 @@ subroutine gw_rdg_calc( &
    ttrdg = 0._r8
    utrdg = 0._r8
    vtrdg = 0._r8
+   !MVG
+   k_wave_orog_tot=0._r8
+   xi_orog_tot=0._r8
+   gw_enflux_orog_tot=0._r8
+   egwdffi_orog_tot=0._r8
 
    do nn = 1, n_rdg
   
@@ -2242,6 +2315,34 @@ subroutine gw_rdg_calc( &
          ttgw, qtgw, egwdffi,   gwut, dttdf, dttke, &
          kwvrdg=kwvrdg, & 
          satfac_in = 1._r8, lapply_vdiff=gw_rdg_do_vdiff )
+
+     IF (use_gw_chem) then !MVG
+	
+         call effective_gw_diffusivity(ncol, band_oro, wavelength_mid, p, dt, &
+             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave_orog, xi_orog, gw_enflux_orog,    &
+             zm, zi, kwvrdg=kwvrdg)
+
+ 	 do k = 1, pver !add up contributions from all ridges
+           k_wave_orog_tot(:,k) = k_wave_orog_tot(:,k) + k_wave_orog(:,k)
+	   xi_orog_tot(:,k) = xi_orog_tot(:,k) + xi_orog(:,k)
+ 	   gw_enflux_orog_tot(:,k) = gw_enflux_orog_tot(:,k) + gw_enflux_orog(:,k)
+         enddo
+       
+   	 !  add up diffusion coefficients from all ridges
+         do k = 1, pver+1
+          egwdffi_orog_tot(:,k) = egwdffi_orog_tot(:,k) + egwdffi(:,k)
+         end do
+
+      if (nn <= 6) then
+         write(cn, '(i1)') nn
+         call outfld('k_wave_orog'//cn//'RDG'//trim(type),   k_wave_orog,  ncol, lchnk)
+         call outfld('xi_orog'//cn//'RDG'//trim(type),       xi_orog,  ncol, lchnk)
+         call outfld('gw_enflux_orog'//cn//'RDG'//trim(type),  gw_enflux_orog,    ncol, lchnk) 
+	 call outfld('EKGW_orog'//cn//'RDG'//trim(type),  egwdffi_orog,    ncol, lchnk)   
+      end if
+
+    ENDIF
+
 
       ! Add the tendencies from each ridge to the totals.
       do k = 1, pver
@@ -2312,6 +2413,13 @@ subroutine gw_rdg_calc( &
    call outfld(fname(3), utrdg,  ncol, lchnk)
    call outfld(fname(4), vtrdg,  ncol, lchnk)
    call outfld('TTGWORO', ttrdg / cpair,  ncol, lchnk)
+
+   if (use_gw_chem) then !MVG
+     call outfld ('k_wave_orog_tot_'//trim(type), k_wave_orog_tot, ncol, lchnk)
+     call outfld ('xi_orog_tot_'//trim(type),     xi_orog_tot, ncol, lchnk)
+     call outfld ('gw_enflux_orog_tot_'//trim(type), gw_enflux_orog_tot, ncol, lchnk)
+     call outfld ('EKGW_orog_tot_'//trim(type),  egwdffi_orog_tot,    ncol, lchnk)
+   endif
 
    deallocate(tau, gwut, c)
 

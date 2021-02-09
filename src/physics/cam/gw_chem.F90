@@ -25,7 +25,7 @@ contains
 
 subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt,    &
            t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,  &
-           zm, zi)
+           zm, zi, kwvrdg)
 !-----------------------------------------------------------------------
 ! Compute K_wave (wave effective diffusivity) etc...
 ! ....
@@ -40,6 +40,8 @@ use gw_utils, only: midpoint_interp
   type(GWBand), intent(in) :: band
   ! horizonatl wavelength
   real(r8), intent(in) :: lambda_h
+  ! horiz wavenumber [anisotropic orography].
+  real(r8), intent(in), optional :: kwvrdg(ncol)
   ! Pressure coordinates.
   type(Coords1D), intent(in) :: p
   ! Time step.
@@ -80,6 +82,8 @@ use gw_utils, only: midpoint_interp
   ! The vertical wavelength and the lmbd_h/lmbd_z ratio
   real(r8) :: lambda_z(ncol,-band%ngwv:band%ngwv,pver+1) 
   real(r8) :: lambda_ratio(ncol,-band%ngwv:band%ngwv,pver+1) 
+  ! horiz wavelength  [anisotropic orography]
+  real(r8) :: lambda_h_rdg(ncol) 
   ! The absolute momenum flux compute from tau
   real(r8) :: mom_flux(ncol,-band%ngwv:band%ngwv,pver+1)
   ! GW intrinsic frequency 
@@ -120,16 +124,21 @@ do i=1,ncol
 	 !compute gw intrinsic frequency and vertical wavenumber
          c_i(i,l,k)=c(i,l)-ubi(i,k) 
 
-         if (c_i(i,l,k) .ne. 0) then
-           gw_frq(i,l,k)=abs(c_i(i,l,k))/lambda_h
-           m(i,l,k)= (ni(i,k)*band%kwv)/gw_frq(i,l,k)
-         else
-         ! at critical levels where c_i=0 (i.e. c=ubi) tau=0
-	 ! set everything else to zero too otherwise in the
-	 ! computation of m we get division by zeros and generation of NaNs and Inf
+         IF (c_i(i,l,k) .ne. 0) then
+	   gw_frq(i,l,k)=abs(c_i(i,l,k))/lambda_h
+
+           if (present(kwvrdg)) then
+            m(i,l,k)= (ni(i,k)*kwvrdg(i))/gw_frq(i,l,k)
+	   else
+            m(i,l,k)= (ni(i,k)*band%kwv)/gw_frq(i,l,k)
+	   endif
+         ELSE
+          !at critical levels where c_i=0 (i.e. c=ubi) tau=0
+	  !set everything else to zero too otherwise in the
+	  !computation of m we get division by zeros and generation of NaNs and Inf
           gw_frq(i,l,k)=0._r8  
 	  m(i,l,k)=0._r8
-         endif
+         ENDIF
       
   enddo
  enddo
@@ -143,9 +152,15 @@ do i=1,ncol
   do l = -band%ngwv, band%ngwv
 
       !as before for critical levels where c_i=0 and thus gw_freq=0 
-       if (gw_frq(i,l,k) .ne. 0._r8) then           
+      IF (gw_frq(i,l,k) .ne. 0._r8) then           
 	lambda_z(i,l, k)= (2._r8*pi)/m(i,l,k)
-        lambda_ratio(i,l, k)=lambda_z(i,l, k)/lambda_h
+
+        if (present(kwvrdg)) then
+         lambda_h_rdg(i)= (2._r8*pi)/kwvrdg(i)
+         lambda_ratio(i,l,k)=lambda_z(i,l,k)/lambda_h_rdg(i)
+        else
+         lambda_ratio(i,l,k)=lambda_z(i,l,k)/lambda_h
+	endif
 
 	!use MF (m2/s2) to compute T' (K) using the polar eqs and dispersion 
         !rels for mid-freq Gws (see e.g. see Ern et al 2004)
@@ -154,9 +169,9 @@ do i=1,ncol
 
         !compute Var(dT'/dz)
         var_t(i,k)= var_t(i,k)+ 0.5*m(i,l,k)**2.*gw_t(i,l,k)**2.
-     else !set contribution to total variance zero
+     ELSE !set contribution to total variance zero
         var_t(i,k)= var_t(i,k)+ 0._r8
-     endif
+     ENDIF
            
 
 	!if (masterproc) then 
@@ -209,7 +224,7 @@ do i=1,ncol
        frq_m(i,l,k)=gw_frq(i,l,k)/m(i,l,k)    
        m_sq(i,l,k)=m(i,l,k)**2.
        gw_t_sq(i,l,k)=gw_t(i,l,k)**2.
-       a(i,l,k)=1._r8-2._r8*r_cp*(gw_frq(i,l,k))**2./ni(i,k)**2.
+       a(i,l,k)=1._r8-(2._r8*r_cp*(gw_frq(i,l,k))**2./ni(i,k)**2.)
        b(i,k)=2._r8*Hp(i,k)
        energy(i,k)=energy(i,k) + (1._r8-frq_n(i,l,k))*frq_m(i,l,k)* &
 	        ( ((m_sq(i,l,k)*gw_t_sq(i,l,k)*0.5)*1000.)/( (m_sq(i,l,k)+ &  !convert var_t (=m2*T'*0.5) to K/km
@@ -274,7 +289,7 @@ enddo
 !          	write (iulog,*) 'gamma_ad & dtdz', gamma_ad, dtdz(i,k)
 !		write (iulog,*) 'energy=', energy(i,k)
 !		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
-!		write (iulog,*) 'gw_enflux/(g/N2)', gw_enflux(i,k)/(gravit/ni(i,k)**2.)
+!		write (iulog,*) 'gw_enflux/(g/N2)', gw_enflux(i,k)*(ni(i,k)**2./gravit)
 !		write (iulog,*) 'xi=', xi(i,k)
 !		write (iulog,*) 'k_wave=', k_wave(i,k) 
 !               	endif	
