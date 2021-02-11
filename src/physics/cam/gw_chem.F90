@@ -25,7 +25,7 @@ contains
 
 subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt,    &
            t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,  &
-           zm, zi, kwvrdg)
+           zm, zi, var_t, dtdz, kwvrdg)
 !-----------------------------------------------------------------------
 ! Compute K_wave (wave effective diffusivity) etc...
 ! ....
@@ -50,7 +50,7 @@ use gw_utils, only: midpoint_interp
   real(r8), intent(in) :: t(ncol,pver)
   ! Interface density (Kg m-3)
   real(r8), intent(in) :: rhoi(ncol,pver+1)
-  ! Midpoint and interface Brunt-Vaisalla frequencies.
+  ! Midpoint and interface Brunt-Vaisala frequencies.
   real(r8), intent(in) :: nm(ncol,pver), ni(ncol,pver+1)
   ! Projection of wind at interfaces.
   real(r8), intent(in) :: ubi(ncol,pver+1)
@@ -67,6 +67,11 @@ use gw_utils, only: midpoint_interp
   real(r8), intent(out) :: k_wave(ncol,pver) !total over entire wave spectrum for each GW source (i.e. Beres and C&M)
   real(r8), intent(out) :: xi(ncol,pver)
   real(r8), intent(out) :: gw_enflux(ncol,pver)
+
+  ! Variance of dT'/dz
+  real(r8), intent(out)  :: var_t(ncol,pver+1)
+  ! Dt/Dz environment 
+  real(r8), intent(out)  :: dtdz(ncol, pver)
 
   
   !---------------------------Local storage-------------------------------
@@ -95,7 +100,7 @@ use gw_utils, only: midpoint_interp
   ! GW temperature perturbation
   real(r8):: gw_t(ncol,-band%ngwv:band%ngwv,pver+1)
   ! Variance of dT'/dz
-  real(r8):: var_t(ncol,pver+1)
+  !real(r8):: var_t(ncol,pver+1)
   ! Pressure scale height
   real(r8):: Hp(ncol,pver+1)
   ! energy term part of the computation for the energy flux
@@ -104,7 +109,7 @@ use gw_utils, only: midpoint_interp
   real(r8), dimension(ncol, -band%ngwv:band%ngwv,pver+1) ::  frq_n, frq_m, &
 				      			     m_sq, gw_t_sq, a
   real(r8), dimension(ncol,pver+1) :: g_NT_sq, b
-  real(r8), dimension(ncol, pver)  :: dtdp, dtdz, one_plus_xi, one_min_xi
+  real(r8), dimension(ncol, pver)  :: dtdp, one_plus_xi, one_min_xi
 
  logical  :: pressure_coords = .False. 
 
@@ -209,6 +214,7 @@ enddo
       var_t(:,k)= var_t(:,k)*1000. !convert var(dT'/dz) and gamma_ad to K/km
       dtdz(:,k)=dtdz(:,k)*1000.    !for the computation of xi
       xi(:,k)= var_t(:,k)/(gamma_ad+dtdz(:,k))**2. 
+      !xi(:,k)=min(0.99, xi(:,k))
    enddo
  endif
 
@@ -271,7 +277,8 @@ enddo
 !        do k = 1, pver+1
 !         do l = -band%ngwv, band%ngwv 
 !           if (tau(i,l,k) .gt. 0) then
-!		if (k .eq. 15) then
+		!if (k .eq. 50) then
+!		if (k_wave(i,k) .lt. 0)  then
 !		write (iulog,*)  'i,l,k =', i,l,k
 !		write (iulog,*)  'ci', c_i(i,l,k)
 !		write (iulog,*)  'gw_freq', gw_frq(i,l,k)
@@ -285,9 +292,9 @@ enddo
 !          	write (iulog,*) 'm =',  m(i,l,k)
 !		write (iulog,*) 'lambda_z=', lambda_z(i,l,k)
 !		write (iulog,*) 'g_NT_sq=', g_NT_sq(i,k)
-!		write (iulog,*) 't & zm=', t(i,k), zm(i,k)
+!		write (iulog,*) 'zm=', zm(i,k)
 !          	write (iulog,*) 'gamma_ad & dtdz', gamma_ad, dtdz(i,k)
-!		write (iulog,*) 'energy=', energy(i,k)
+!		write (iulog,*) 'gw_frq2/n2', gw_frq(i,l,k)**2./ni(i,k)**2.
 !		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
 !		write (iulog,*) 'gw_enflux/(g/N2)', gw_enflux(i,k)*(ni(i,k)**2./gravit)
 !		write (iulog,*) 'xi=', xi(i,k)

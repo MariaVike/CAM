@@ -1081,6 +1081,11 @@ subroutine gw_init()
           'Instability parameter (Xi_tot) (over the entire spectrum)')
      call addfld ('gw_enflux_tot', (/ 'lev' /), 'A','m2/s', &
           'Vertical gravity wave energy flux (over the entire spectrum)')
+
+     call addfld ('var_gwtdz_tot', (/ 'ilev' /), 'A','K2/Km2', &
+          'Variance of lapse rate of gw temperature perturbation')
+     call addfld ('dtdz', (/ 'lev' /), 'A','K2/Km2', &
+          'Dt/Dz environment')
  end if
 
 end subroutine gw_init
@@ -1414,10 +1419,16 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   real(r8) :: k_wave_tot(state%ncol,pver) !total over entire wave spectrum and for all GW sources 
   real(r8) :: xi_tot(state%ncol,pver)
   real(r8) :: gw_enflux_tot(state%ncol,pver)
+  real(r8) :: var_gwtdz_tot(state%ncol,pver+1) 
 
   real(r8) :: k_wave(state%ncol,pver) !total over entire wave spectrum for each GW source (i.e. Beres and C&M)
   real(r8) :: xi(state%ncol,pver)
   real(r8) :: gw_enflux(state%ncol,pver)
+  real(r8) :: var_gwtdz(state%ncol,pver+1)   ! Variance of dT'/dz
+ 
+  ! Dt/Dz environment 
+  real(r8) :: dtdz(state%ncol, pver)
+
 
   !------------------------------------------------------------------------
 
@@ -1485,6 +1496,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   k_wave_tot=0._r8 !MVG
   xi_tot=0._r8
   gw_enflux_tot=0._r8
+  var_gwtdz_tot=0._r8
   
   if (use_gw_convect_dp) then
      !------------------------------------------------------------------
@@ -1524,13 +1536,17 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
      if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
              t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,        &
-             zm, zi)
+             zm, zi, var_gwtdz, dtdz)
 
  	do k = 1, pver !add up contributions from all GWs sources
            k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
 	   xi_tot(:,k) = xi_tot(:,k) + xi(:,k)
  	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
+
+	do k = 1, pver+1 !add up variances
+	 var_gwtdz(:,k) = var_gwtdz_tot(:,k) + var_gwtdz(:,k)
+	enddo
 
         !write in history file
 	call gw_chem_outflds(beres_dp_pf, lchnk, ncol, k_wave, &
@@ -1625,13 +1641,17 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
      if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
              t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,        &
-             zm, zi)
+             zm, zi, var_gwtdz, dtdz)
 
  	do k = 1, pver !add up contributions from all GWs sources
            k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
 	   xi_tot(:,k) = xi_tot(:,k) + xi(:,k)
  	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
+
+	do k = 1, pver+1 !add up variances
+	 var_gwtdz(:,k) = var_gwtdz_tot(:,k) + var_gwtdz(:,k)
+	enddo
 
         !write in history file
 	call gw_chem_outflds(beres_sh_pf, lchnk, ncol, k_wave, &
@@ -1727,13 +1747,17 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
     if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
              t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,        &
-             zm, zi)
+             zm, zi, var_gwtdz, dtdz)
 
  	do k = 1, pver !add up contributions from all GWs sources
            k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
 	   xi_tot(:,k) = xi_tot(:,k) + xi(:,k)
  	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
+
+	do k = 1, pver+1 !add up variances
+	 var_gwtdz_tot(:,k) = var_gwtdz_tot(:,k) + var_gwtdz(:,k)
+	enddo
 
         !write in history file
 	call gw_chem_outflds('C', lchnk, ncol, k_wave, &
@@ -1997,7 +2021,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
      call outfld('VEGW', v ,  ncol, lchnk)
      call outfld('TEGW', t ,  ncol, lchnk)
 
-     IF (use_gw_chem) then !MVG
+     IF (use_gw_chem) then                              !MVG
  
         call gw_rdg_calc(&
         'BETA ', ncol, lchnk, n_rdg_beta, dt,     &
@@ -2007,7 +2031,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
         hwdth, clngt, gbxar, mxdis, angll, anixy, &
         rdg_beta_cd_llb, trpd_leewv_rdg_beta,     &
         ptend, flx_heat, k_wave, xi, gw_enflux, egwdffi, &
-        use_gw_chem=use_gw_chem)
+        var_gwtdz, use_gw_chem=use_gw_chem)
 
         do k = 1, pver !add up contributions from all GWs sources
            k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
@@ -2015,8 +2039,9 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
  	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
 
-        !add the diffusion coefficients
+        !add the diffusion coefficients and variances
         do k = 1, pver+1
+	 var_gwtdz_tot(:,k) = var_gwtdz_tot(:,k) + var_gwtdz(:,k)
          egwdffi_tot(:,k) = egwdffi_tot(:,k) + egwdffi(:,k)
         end do
 
@@ -2093,6 +2118,11 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
      call outfld ('k_wave_tot', k_wave_tot, ncol, lchnk)
      call outfld ('xi_tot', xi_tot, ncol, lchnk)
      call outfld ('gw_enflux_tot', gw_enflux_tot, ncol, lchnk)
+    
+     call outfld ('var_gwtdz_tot', var_gwtdz_tot, ncol, lchnk)
+     call outfld ('dtdz', dtdz, ncol, lchnk)     
+
+
   end if
 
 end subroutine gw_tend
@@ -2110,7 +2140,7 @@ subroutine gw_rdg_calc( &
    ptend, flx_heat, &
    k_wave_orog_tot, xi_orog_tot, &
    gw_enflux_orog_tot, egwdffi_orog_tot, &
-   use_gw_chem) !MVG optional arguments for gw_chem
+   var_gwtdz_orog_tot, use_gw_chem) !MVG optional arguments for gw_chem
 
    use coords_1d,  only: Coords1D
    use gw_rdg,     only: gw_rdg_src, gw_rdg_belowpeak, gw_rdg_break_trap, gw_rdg_do_vdiff
@@ -2157,16 +2187,21 @@ subroutine gw_rdg_calc( &
    real(r8),        intent(out) :: flx_heat(pcols)
 
   !variables for gw_chem  !MVG 
-  logical,  intent(in), optional  :: use_gw_chem 
+  logical,  intent(in),  optional  :: use_gw_chem 
   real(r8), intent(out), optional :: k_wave_orog_tot(ncol,pver) !total over full orography spectrum 
   real(r8), intent(out), optional :: xi_orog_tot(ncol,pver)
   real(r8), intent(out), optional :: gw_enflux_orog_tot(ncol,pver)
   real(r8), intent(out), optional :: egwdffi_orog_tot(ncol,pver+1)
+  real(r8), intent(out), optional :: var_gwtdz_orog_tot(ncol,pver+1)
+
+  real(r8) :: var_gwtdz_orog(ncol,pver+1)
+  real(r8) :: dtdz(ncol, pver)
 
   real(r8) :: k_wave_orog(ncol,pver) !values for individual ridges
   real(r8) :: xi_orog(ncol,pver)
   real(r8) :: gw_enflux_orog(ncol,pver)
   real(r8) :: egwdffi_orog(ncol,pver+1)
+
 
    !---------------------------Local storage-------------------------------
 
@@ -2282,6 +2317,7 @@ subroutine gw_rdg_calc( &
    xi_orog_tot=0._r8
    gw_enflux_orog_tot=0._r8
    egwdffi_orog_tot=0._r8
+   var_gwtdz_orog_tot=0._r8
 
    do nn = 1, n_rdg
   
@@ -2320,7 +2356,7 @@ subroutine gw_rdg_calc( &
 	
          call effective_gw_diffusivity(ncol, band_oro, wavelength_mid, p, dt, &
              t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave_orog, xi_orog, gw_enflux_orog,    &
-             zm, zi, kwvrdg=kwvrdg)
+             zm, zi, var_gwtdz_orog, dtdz, kwvrdg=kwvrdg)
 
  	 do k = 1, pver !add up contributions from all ridges
            k_wave_orog_tot(:,k) = k_wave_orog_tot(:,k) + k_wave_orog(:,k)
@@ -2328,8 +2364,9 @@ subroutine gw_rdg_calc( &
  	   gw_enflux_orog_tot(:,k) = gw_enflux_orog_tot(:,k) + gw_enflux_orog(:,k)
          enddo
        
-   	 !  add up diffusion coefficients from all ridges
+   	 !  add up diffusion coefficients and variances from all ridges
          do k = 1, pver+1
+	  var_gwtdz_orog_tot(:,k) = var_gwtdz_orog_tot(:,k) +  var_gwtdz_orog(:,k)
           egwdffi_orog_tot(:,k) = egwdffi_orog_tot(:,k) + egwdffi(:,k)
          end do
 
