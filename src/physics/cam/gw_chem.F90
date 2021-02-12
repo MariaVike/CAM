@@ -210,10 +210,10 @@ enddo
  else
  !or z coordinates
    do k = pver-1,1,-1
-      dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1))
+      dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1)) !we are using t at mid-points so dtdz is computed at interfaces
       var_t(:,k)= var_t(:,k)*1000. !convert var(dT'/dz) and gamma_ad to K/km
       dtdz(:,k)=dtdz(:,k)*1000.    !for the computation of xi
-      xi(:,k)= var_t(:,k)/(gamma_ad+dtdz(:,k))**2. 
+      xi(:,k+1)= var_t(:,k+1)/(gamma_ad+dtdz(:,k))**2. 
       !xi(:,k)=min(0.99, xi(:,k))
    enddo
  endif
@@ -252,12 +252,12 @@ enddo
    do k = pver-1,1,-1
       dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1))
       dtdz(:,k)=dtdz(:,k)*1000. !convert K/m to K/km
-      gw_enflux(:,k)= ( 1._r8/( Hp(:,k)*(gamma_ad+dtdz(:,k))**2. ) ) *energy(:,k)
+      gw_enflux(:,k+1)= ( 1._r8/( Hp(:,k+1)*(gamma_ad+dtdz(:,k))**2. ) ) *energy(:,k+1)
    enddo
  endif
 
  !Finally compute k_wave
-   do k = 1, pver
+   do k = 2, pver
       one_plus_xi(:,k)=1._r8+xi(:,k)
       one_min_xi(:,k) =1._r8-xi(:,k)    
       k_wave(:,k)=(one_plus_xi(:,k)/one_min_xi(:,k))*xi(:,k)*egwdffi(:,k)+ & 
@@ -272,39 +272,6 @@ enddo
    xi(:,1)=0._r8
    gw_enflux(:,1)=0._r8
 
-!IF (masterproc) then
-!       do i=1,ncol
-!        do k = 1, pver+1
-!         do l = -band%ngwv, band%ngwv 
-!           if (tau(i,l,k) .gt. 0) then
-		!if (k .eq. 50) then
-!		if (k_wave(i,k) .lt. 0)  then
-!		write (iulog,*)  'i,l,k =', i,l,k
-!		write (iulog,*)  'ci', c_i(i,l,k)
-!		write (iulog,*)  'gw_freq', gw_frq(i,l,k)
-!		write (iulog,*)  'c', c(i,l)
-!		write (iulog,*)  'ubi', ubi(i,k)
-!          	write (iulog,*) 'TAU in gw_chem', tau(i,l,k)
-!          	write (iulog,*) 'MF', mom_flux(i,l,k)
-!                write (iulog,*) 'gw_t=', gw_t(i,l,k)
-!          	write (iulog,*) 'var_t=', var_t(i,k)
-!          	write (iulog,*) 'temp & N=',  ti(i,k), ni(i,k)
-!          	write (iulog,*) 'm =',  m(i,l,k)
-!		write (iulog,*) 'lambda_z=', lambda_z(i,l,k)
-!		write (iulog,*) 'g_NT_sq=', g_NT_sq(i,k)
-!		write (iulog,*) 'zm=', zm(i,k)
-!          	write (iulog,*) 'gamma_ad & dtdz', gamma_ad, dtdz(i,k)
-!		write (iulog,*) 'gw_frq2/n2', gw_frq(i,l,k)**2./ni(i,k)**2.
-!		write (iulog,*) 'gw_enflux=', gw_enflux(i,k)
-!		write (iulog,*) 'gw_enflux/(g/N2)', gw_enflux(i,k)*(ni(i,k)**2./gravit)
-!		write (iulog,*) 'xi=', xi(i,k)
-!		write (iulog,*) 'k_wave=', k_wave(i,k) 
-!               	endif	
-!          endif
-!         enddo
-!        enddo
-!      enddo
-!END IF 
 
 
 end subroutine effective_gw_diffusivity
