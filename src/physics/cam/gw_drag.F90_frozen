@@ -713,10 +713,8 @@ subroutine gw_init()
           'Effective wave diffusivity orography')
         call addfld('xi_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A',' ', &
           'Instability parameter (Xi) orography')
-	call addfld('k_eff_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A',' m2/s', &
-          'k_eff orography')
-	call addfld('k_e_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A',' m2/s', &
-          'k_e orography')
+	call addfld('gw_enflux_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A',' m2/s', &
+          'Vertical gravity wave energy flux orography')
 	call addfld ('EKGW_orog'//cn//'RDGBETA', (/ 'ilev' /), 'A','M2/S', &
           'Effective Kzz orography')
       end do
@@ -725,10 +723,8 @@ subroutine gw_init()
           'Effective wave diffusivity orography')
       call addfld ('xi_orog_tot_BETA',(/ 'lev' /)  ,  'A',' ', &
           'Instability parameter (Xi) orography')
-      call addfld ('k_eff_orog_tot_BETA', (/ 'lev' /), 'A','m2/s', &
-          'k_eff orography')
-      call addfld ('k_e_orog_tot_BETA', (/ 'lev' /), 'A','m2/s', &
-          'k_e orography')
+      call addfld ('gw_enflux_orog_tot_BETA', (/ 'lev' /), 'A','m2/s', &
+          'Vertical gravity wave energy flux orography')
       call addfld ('EKGW_orog_tot_BETA' ,(/ 'ilev' /), 'A','M2/S', &
           'Effective Kzz orography')
 
@@ -1083,12 +1079,10 @@ subroutine gw_init()
           'Effective wave diffusivity (over the entire spectrum)')
      call addfld ('xi_tot',(/ 'lev' /)  ,  'A',' ', &
           'Instability parameter (Xi_tot) (over the entire spectrum)')
-     call addfld ('k_eff_tot', (/ 'lev' /), 'A','m2/s', &
-          'total effective diffusivity (over the entire spectrum)')
-     call addfld ('k_e_tot', (/ 'lev' /), 'A','m2/s', &
-          'K_e (over the entire spectrum)')
+     call addfld ('gw_enflux_tot', (/ 'lev' /), 'A','m2/s', &
+          'Vertical gravity wave energy flux (over the entire spectrum)')
 
-     call addfld ('var_gwt_tot', (/ 'ilev' /), 'A','K2/Km2', &
+     call addfld ('var_gwtdz_tot', (/ 'ilev' /), 'A','K2/Km2', &
           'Variance of lapse rate of gw temperature perturbation')
      call addfld ('dtdz', (/ 'lev' /), 'A','K2/Km2', &
           'Dt/Dz environment')
@@ -1424,15 +1418,13 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   !variables for gw_chem  !MVG 
   real(r8) :: k_wave_tot(state%ncol,pver) !total over entire wave spectrum and for all GW sources 
   real(r8) :: xi_tot(state%ncol,pver)
-  real(r8) :: k_e_tot(state%ncol,pver)
-  real(r8) :: k_eff_tot(state%ncol,pver)
-  real(r8) :: var_gwt_tot(state%ncol,pver+1) 
+  real(r8) :: gw_enflux_tot(state%ncol,pver)
+  real(r8) :: var_gwtdz_tot(state%ncol,pver+1) 
 
   real(r8) :: k_wave(state%ncol,pver) !total over entire wave spectrum for each GW source (i.e. Beres and C&M)
   real(r8) :: xi(state%ncol,pver)
-  real(r8) :: k_e(state%ncol,pver)
-  real(r8) :: k_eff(state%ncol,pver)
-  real(r8) :: var_gwt(state%ncol,pver+1)   ! Variance of T'
+  real(r8) :: gw_enflux(state%ncol,pver)
+  real(r8) :: var_gwtdz(state%ncol,pver+1)   ! Variance of dT'/dz
  
   ! Dt/Dz environment 
   real(r8) :: dtdz(state%ncol, pver)
@@ -1503,9 +1495,8 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
   flx_heat = 0._r8
   k_wave_tot=0._r8 !MVG
   xi_tot=0._r8
-  k_e_tot=0._r8
-  k_eff_tot=0._r8
-  var_gwt_tot=0._r8
+  gw_enflux_tot=0._r8
+  var_gwtdz_tot=0._r8
   
   if (use_gw_convect_dp) then
      !------------------------------------------------------------------
@@ -1544,23 +1535,22 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
      if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
-             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, k_e, k_eff,        &
-             zm, zi, var_gwt, dtdz, state1%lat(:ncol))
+             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,        &
+             zm, zi, var_gwtdz, dtdz)
 
  	do k = 1, pver !add up contributions from all GWs sources
            k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
 	   xi_tot(:,k) = xi_tot(:,k) + xi(:,k)
- 	   k_e_tot(:,k) = k_e_tot(:,k) + k_e(:,k)
-	   k_eff_tot(:,k) = k_eff_tot(:,k) + k_eff(:,k)
+ 	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
 
 	do k = 1, pver+1 !add up variances
-	 var_gwt(:,k) = var_gwt_tot(:,k) + var_gwt(:,k)
+	 var_gwtdz(:,k) = var_gwtdz_tot(:,k) + var_gwtdz(:,k)
 	enddo
 
         !write in history file
 	call gw_chem_outflds(beres_dp_pf, lchnk, ncol, k_wave, &
-             	  	     xi, k_e, k_eff, egwdffi)
+             	  	     xi, gw_enflux, egwdffi)
      endif
 
      ! Project stress into directional components.
@@ -1650,23 +1640,22 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
      if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
-             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, k_e, k_eff,        &
-             zm, zi, var_gwt, dtdz, state1%lat(:ncol))
+             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,        &
+             zm, zi, var_gwtdz, dtdz)
 
  	do k = 1, pver !add up contributions from all GWs sources
            k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
 	   xi_tot(:,k) = xi_tot(:,k) + xi(:,k)
- 	   k_e_tot(:,k) = k_e_tot(:,k) + k_e(:,k)
-	   k_eff_tot(:,k) = k_eff_tot(:,k) + k_eff(:,k)
+ 	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
 
 	do k = 1, pver+1 !add up variances
-	 var_gwt(:,k) = var_gwt_tot(:,k) + var_gwt(:,k)
+	 var_gwtdz(:,k) = var_gwtdz_tot(:,k) + var_gwtdz(:,k)
 	enddo
 
         !write in history file
 	call gw_chem_outflds(beres_sh_pf, lchnk, ncol, k_wave, &
-             	  	     xi, k_e, k_eff, egwdffi)
+             	  	     xi, gw_enflux, egwdffi)
 
      endif
 
@@ -1757,23 +1746,22 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
 
     if (use_gw_chem) then 								!MVG
         call effective_gw_diffusivity(ncol, band_mid, wavelength_mid, p, dt, &
-             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, k_e, k_eff,        &
-             zm, zi, var_gwt, dtdz, state1%lat(:ncol))
+             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave, xi, gw_enflux,        &
+             zm, zi, var_gwtdz, dtdz)
 
  	do k = 1, pver !add up contributions from all GWs sources
            k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
 	   xi_tot(:,k) = xi_tot(:,k) + xi(:,k)
- 	   k_e_tot(:,k) = k_e_tot(:,k) + k_e(:,k)
-	   k_eff_tot(:,k) = k_eff_tot(:,k) + k_eff(:,k)
+ 	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
 
 	do k = 1, pver+1 !add up variances
-	 var_gwt_tot(:,k) = var_gwt_tot(:,k) + var_gwt(:,k)
+	 var_gwtdz_tot(:,k) = var_gwtdz_tot(:,k) + var_gwtdz(:,k)
 	enddo
 
         !write in history file
 	call gw_chem_outflds('C', lchnk, ncol, k_wave, &
-             	  	     xi, k_e, k_eff, egwdffi)
+             	  	     xi, gw_enflux, egwdffi)
 
      endif
 
@@ -2042,19 +2030,18 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
         effgw_rdg_beta, effgw_rdg_beta_max,       &
         hwdth, clngt, gbxar, mxdis, angll, anixy, &
         rdg_beta_cd_llb, trpd_leewv_rdg_beta,     &
-        ptend, flx_heat, k_wave, xi, k_e, k_eff, egwdffi, &
-        var_gwt, state1%lat(:ncol), use_gw_chem=use_gw_chem)
+        ptend, flx_heat, k_wave, xi, gw_enflux, egwdffi, &
+        var_gwtdz, use_gw_chem=use_gw_chem)
 
         do k = 1, pver !add up contributions from all GWs sources
            k_wave_tot(:,k) = k_wave_tot(:,k) + k_wave(:,k)
 	   xi_tot(:,k) = xi_tot(:,k) + xi(:,k)
- 	   k_e_tot(:,k) = k_e_tot(:,k) + k_e(:,k)
-	   k_eff_tot(:,k) = k_eff_tot(:,k) + k_eff(:,k)
+ 	   gw_enflux_tot(:,k) = gw_enflux_tot(:,k) + gw_enflux(:,k)
         enddo
 
         !add the diffusion coefficients and variances
         do k = 1, pver+1
-	 var_gwt_tot(:,k) = var_gwt_tot(:,k) + var_gwt(:,k)
+	 var_gwtdz_tot(:,k) = var_gwtdz_tot(:,k) + var_gwtdz(:,k)
          egwdffi_tot(:,k) = egwdffi_tot(:,k) + egwdffi(:,k)
         end do
 
@@ -2130,10 +2117,9 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
      ! write totals to history file.
      call outfld ('k_wave_tot', k_wave_tot, ncol, lchnk)
      call outfld ('xi_tot', xi_tot, ncol, lchnk)
-     call outfld ('k_e_tot', k_e_tot, ncol, lchnk)
-     call outfld ('k_eff_tot', k_e_tot, ncol, lchnk)
+     call outfld ('gw_enflux_tot', gw_enflux_tot, ncol, lchnk)
     
-     call outfld ('var_gwt_tot', var_gwt_tot, ncol, lchnk)
+     call outfld ('var_gwtdz_tot', var_gwtdz_tot, ncol, lchnk)
      call outfld ('dtdz', dtdz, ncol, lchnk)     
 
 
@@ -2153,8 +2139,8 @@ subroutine gw_rdg_calc( &
    rdg_cd_llb, trpd_leewv, &
    ptend, flx_heat, &
    k_wave_orog_tot, xi_orog_tot, &
-   k_e_orog_tot, k_eff_orog_tot, egwdffi_orog_tot, &
-   var_gwt_orog_tot, lat, use_gw_chem) !MVG optional arguments for gw_chem
+   gw_enflux_orog_tot, egwdffi_orog_tot, &
+   var_gwtdz_orog_tot, use_gw_chem) !MVG optional arguments for gw_chem
 
    use coords_1d,  only: Coords1D
    use gw_rdg,     only: gw_rdg_src, gw_rdg_belowpeak, gw_rdg_break_trap, gw_rdg_do_vdiff
@@ -2201,23 +2187,19 @@ subroutine gw_rdg_calc( &
    real(r8),        intent(out) :: flx_heat(pcols)
 
   !variables for gw_chem  !MVG 
-  logical,  intent(in),  optional :: use_gw_chem 
-  real(r8), intent(in),  optional :: lat(:)
+  logical,  intent(in),  optional  :: use_gw_chem 
   real(r8), intent(out), optional :: k_wave_orog_tot(ncol,pver) !total over full orography spectrum 
   real(r8), intent(out), optional :: xi_orog_tot(ncol,pver)
-  real(r8), intent(out), optional :: k_e_orog_tot(ncol,pver)
-  real(r8), intent(out), optional :: k_eff_orog_tot(ncol,pver)
+  real(r8), intent(out), optional :: gw_enflux_orog_tot(ncol,pver)
   real(r8), intent(out), optional :: egwdffi_orog_tot(ncol,pver+1)
-  real(r8), intent(out), optional :: var_gwt_orog_tot(ncol,pver+1)
- 
+  real(r8), intent(out), optional :: var_gwtdz_orog_tot(ncol,pver+1)
 
-  real(r8) :: var_gwt_orog(ncol,pver+1)
+  real(r8) :: var_gwtdz_orog(ncol,pver+1)
   real(r8) :: dtdz(ncol, pver)
 
   real(r8) :: k_wave_orog(ncol,pver) !values for individual ridges
   real(r8) :: xi_orog(ncol,pver)
-  real(r8) :: k_e_orog(ncol,pver)
-  real(r8) :: k_eff_orog(ncol,pver)
+  real(r8) :: gw_enflux_orog(ncol,pver)
   real(r8) :: egwdffi_orog(ncol,pver+1)
 
 
@@ -2333,10 +2315,9 @@ subroutine gw_rdg_calc( &
    !MVG
    k_wave_orog_tot=0._r8
    xi_orog_tot=0._r8
-   k_e_orog_tot=0._r8
-   k_eff_orog_tot=0._r8
+   gw_enflux_orog_tot=0._r8
    egwdffi_orog_tot=0._r8
-   var_gwt_orog_tot=0._r8
+   var_gwtdz_orog_tot=0._r8
 
    do nn = 1, n_rdg
   
@@ -2374,19 +2355,18 @@ subroutine gw_rdg_calc( &
      IF (use_gw_chem) then !MVG
 	
          call effective_gw_diffusivity(ncol, band_oro, wavelength_mid, p, dt, &
-             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave_orog, xi_orog, k_e_orog, k_eff_orog,    &
-             zm, zi, var_gwt_orog, dtdz, lat, kwvrdg=kwvrdg)
+             t, rhoi, nm, ni, c, tau, egwdffi, ubi, k_wave_orog, xi_orog, gw_enflux_orog,    &
+             zm, zi, var_gwtdz_orog, dtdz, kwvrdg=kwvrdg)
 
  	 do k = 1, pver !add up contributions from all ridges
            k_wave_orog_tot(:,k) = k_wave_orog_tot(:,k) + k_wave_orog(:,k)
 	   xi_orog_tot(:,k) = xi_orog_tot(:,k) + xi_orog(:,k)
- 	   k_e_orog_tot(:,k) = k_e_orog_tot(:,k) + k_e_orog(:,k)
- 	   k_eff_orog_tot(:,k) = k_eff_orog_tot(:,k) + k_eff_orog(:,k)
+ 	   gw_enflux_orog_tot(:,k) = gw_enflux_orog_tot(:,k) + gw_enflux_orog(:,k)
          enddo
        
    	 !  add up diffusion coefficients and variances from all ridges
          do k = 1, pver+1
-	  var_gwt_orog_tot(:,k) = var_gwt_orog_tot(:,k) +  var_gwt_orog(:,k)
+	  var_gwtdz_orog_tot(:,k) = var_gwtdz_orog_tot(:,k) +  var_gwtdz_orog(:,k)
           egwdffi_orog_tot(:,k) = egwdffi_orog_tot(:,k) + egwdffi(:,k)
          end do
 
@@ -2394,8 +2374,7 @@ subroutine gw_rdg_calc( &
          write(cn, '(i1)') nn
          call outfld('k_wave_orog'//cn//'RDG'//trim(type),   k_wave_orog,  ncol, lchnk)
          call outfld('xi_orog'//cn//'RDG'//trim(type),       xi_orog,  ncol, lchnk)
-         call outfld('k_eff_orog'//cn//'RDG'//trim(type),  k_eff_orog,    ncol, lchnk) 
-         call outfld('k_e_orog'//cn//'RDG'//trim(type),  k_e_orog,    ncol, lchnk) 
+         call outfld('gw_enflux_orog'//cn//'RDG'//trim(type),  gw_enflux_orog,    ncol, lchnk) 
 	 call outfld('EKGW_orog'//cn//'RDG'//trim(type),  egwdffi_orog,    ncol, lchnk)   
       end if
 
@@ -2475,8 +2454,7 @@ subroutine gw_rdg_calc( &
    if (use_gw_chem) then !MVG
      call outfld ('k_wave_orog_tot_'//trim(type), k_wave_orog_tot, ncol, lchnk)
      call outfld ('xi_orog_tot_'//trim(type),     xi_orog_tot, ncol, lchnk)
-     call outfld ('k_eff_orog_tot_'//trim(type), k_eff_orog_tot, ncol, lchnk)
-     call outfld ('k_e_orog_tot_'//trim(type), k_e_orog_tot, ncol, lchnk)
+     call outfld ('gw_enflux_orog_tot_'//trim(type), gw_enflux_orog_tot, ncol, lchnk)
      call outfld ('EKGW_orog_tot_'//trim(type),  egwdffi_orog_tot,    ncol, lchnk)
    endif
 
@@ -2929,10 +2907,8 @@ subroutine gw_chem_addflds(prefix, scheme, band, history_defaults)
        trim(scheme)//' Effective wave diffusivity')
   call addfld (trim(prefix)//'_xi',(/ 'lev' /), 'A','', &
        trim(scheme)//' Instability parameter')
-  call addfld (trim(prefix)//'_k_e',(/ 'lev' /), 'A','m2/s', &
-       trim(scheme)//' k_e')
-  call addfld (trim(prefix)//'_k_eff',(/ 'lev' /), 'A','m2/s', &
-       trim(scheme)//' k_eff')
+  call addfld (trim(prefix)//'_gw_enflux',(/ 'lev' /), 'A','m2/s', &
+       trim(scheme)//' Vertical gravity wave energy flux')
 
   call addfld (trim(prefix)//'_EKGW',(/ 'ilev' /), 'A','m2/s', &
        trim(scheme)//' Effective Kzz due to diffusion by gravity waves')
@@ -2943,7 +2919,7 @@ end subroutine gw_chem_addflds
 ! MVG
 ! Outputs from gw_chem module.
 subroutine gw_chem_outflds(prefix, lchnk, ncol,  k_wave, &
-                           xi, k_e, k_eff, egwdffi)
+                           xi, gw_enflux, egwdffi)
 
   ! One-character prefix prepended to output fields.
   character(len=1), intent(in) :: prefix
@@ -2953,15 +2929,13 @@ subroutine gw_chem_outflds(prefix, lchnk, ncol,  k_wave, &
   
   real(r8), intent(in) :: k_wave(ncol,pver) 
   real(r8), intent(in) :: xi(ncol,pver)
-  real(r8), intent(in) :: k_e(ncol,pver)
-  real(r8), intent(in) :: k_eff(ncol,pver)
+  real(r8), intent(in) :: gw_enflux(ncol,pver)
 
   real(r8), intent(in) :: egwdffi(ncol,pver+1)
 
   call outfld(trim(prefix)//'_k_wave', k_wave, ncol, lchnk)
   call outfld(trim(prefix)//'_xi', xi, ncol, lchnk)
-  call outfld(trim(prefix)//'_k_e', k_e, ncol, lchnk)
-  call outfld(trim(prefix)//'_k_eff', k_eff, ncol, lchnk)
+  call outfld(trim(prefix)//'_gw_enflux', gw_enflux, ncol, lchnk)
  
   call outfld(trim(prefix)//'_EKGW', egwdffi, ncol, lchnk)
 
