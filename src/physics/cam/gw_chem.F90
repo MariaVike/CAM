@@ -190,8 +190,8 @@ wave_filter: DO
   icount=0.
   do i=1,ncol
    do k = 1, pver+1 
-     if ( (var_t(i,k) .ne. 0._r8) .and. (abs(var_t(i,k)-var_t_initial(i,k)) .gt. 0.05*var_t_initial(i,k)) ) then !if var_t=0 waves were 
-        icount=icount+1												 !removed from spectrum 
+     if ( (var_t(i,k) .ne. 0._r8) .and. (abs(var_t(i,k)-var_t_initial(i,k)) .gt. 0.05*var_t_initial(i,k)) ) then  
+        icount=icount+1												 
      endif
    !IF (masterproc) then
    !    if (var_t(i,k)-var_t_initial(i,k) .ne. 0._r8) then
