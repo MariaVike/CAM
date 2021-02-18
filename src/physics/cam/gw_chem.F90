@@ -178,6 +178,7 @@ wave_filter: DO
   enddo
  enddo
 
+
  !Recompute var_t and k_eff for the new filtered spectrum
  call compute_VarT_Keff (ncol, band, lambda_h, t, ti, rhoi, ni, egwdffi,         &
            		zm, cp_r, gamma_ad, coriolis_f,  mom_flux,      &
@@ -190,15 +191,17 @@ wave_filter: DO
   icount=0.
   do i=1,ncol
    do k = 1, pver+1 
-     if ( (var_t(i,k) .ne. 0._r8) .and. (abs(var_t(i,k)-var_t_initial(i,k)) .gt. 0.05*var_t_initial(i,k)) ) then  
+     if (  (abs(var_t(i,k)-var_t_initial(i,k)) .gt. 0.05*var_t_initial(i,k)) ) then  !(var_t(i,k) .ne. 0._r8) .and.
         icount=icount+1												 
      endif
    !IF (masterproc) then
-   !    if (var_t(i,k)-var_t_initial(i,k) .ne. 0._r8) then
-   !    write (iulog,*) 'var_t, var_t_initial', i, k, var_t(i,k), var_t_initial(i,k)
-   !    write (iulog,*) 'var_t - var_t_initial', var_t(i,k)- var_t_initial(i,k)
-   !    write (iulog,*) 'it, icount', it, icount
-   !    endif
+       !if (k .eq. 14) then
+        !if (var_t_initial(i,k) .ne. 0._r8) then
+       !write (iulog,*) 'var_t, var_t_initial, k_eff', i, k, var_t(i,k), var_t_initial(i,k), k_eff(i,k)
+       !write (iulog,*) 'var_t - var_t_initial', var_t(i,k)- var_t_initial(i,k)
+       !write (iulog,*) 'times, icount', times, icount
+       !endif
+       !endif
    !ENDIF
   enddo
  enddo
@@ -213,10 +216,17 @@ wave_filter: DO
 ENDDO wave_filter
 
   !compute instability parameter and energy term using the final Var(T) and k_eff values after filtering
+ do i=1,ncol
   do k=2,pver
-     k_e(:,k)=(var_t(:,k)/lapse_rate_sq(:,k))*( (4._r8*f_n_gammad(:,k))/ti(i,k) )*k_eff_sqr(:,k)*(coriolis_f)**0.5
-     xi(:,k)=(var_t(:,k)/lapse_rate_sq(:,k))*( f_ln_nf(:,k)/(2*k_eff(:,k)) )
+     if (var_t(i,k) .ne. 0._r8) then !because the initial spectrum has been filtered there might be places where var_t(i,k)=0.
+      k_e(i,k)=(var_t(i,k)/lapse_rate_sq(i,k))*( (4._r8*f_n_gammad(i,k))/ti(i,k) )*k_eff_sqr(i,k)*(coriolis_f(i))**0.5
+      xi(i,k)=(var_t(i,k)/lapse_rate_sq(i,k))*( f_ln_nf(i,k)/(2*k_eff(i,k)) )
+      else
+      k_e(i,k)=0._r8
+      xi(i,k)=0._r8
+     endif
   enddo
+ enddo
 
  !Finally compute k_wave
    do k = 2, pver
@@ -225,44 +235,18 @@ ENDDO wave_filter
                    (cp_r-1._r8)*k_e(:,k) )
    enddo
 
-   !set variables at model top (k=1) to be zero. 
+   !set variables at model top (k=1) [k=2 first point for centred differences] and at surface (k=70) [no waves & var_t=0] to be zero
    k_wave(:,1)=0._r8
    xi(:,1)=0._r8
    k_e(:,1)=0._r8
    k_eff(:,1)=0._r8
+   k_wave(:,pver)=0._r8
+   xi(:,pver)=0._r8
+   k_e(:,pver)=0._r8
+   k_eff(:,pver)=0._r8
 
-IF (masterproc) then
-       do i=1,ncol
-        do k = 1, pver+1
-         do l = -band%ngwv, band%ngwv 
-           if (tau(i,l,k) .gt. 0) then
-		!if ((k .gt. 65) .and. (k_wave(i,k) .lt. 0)) then
-		if (k_wave(i,k) .gt. 0)  then
-		write (iulog,*)  'i,l,k =', i,l,k
-!		write (iulog,*)  'ci', c_i(i,l,k)
-!		write (iulog,*)  'gw_freq', gw_frq(i,l,k)
-!		write (iulog,*)  'c', c_speed(i,l)
-!		write (iulog,*)  'ubi', ubi(i,k)
-          	write (iulog,*) 'TAU in gw_chem', tau(i,l,k)
-          	write (iulog,*) 'MF', mom_flux(i,l,k)
-!                write (iulog,*) 'gw_t=', gw_t(i,l,k)
-!          	write (iulog,*) 'temp & N=',  ti(i,k), ni(i,k)
-!          	write (iulog,*) 'm =',  m(i,l,k)
-!		write (iulog,*) 'lambda_z=', lambda_z(i,l,k)
-		write (iulog,*) 'zm=', zm(i,k)
-		write (iulog,*) 'coriolis_f', coriolis_f(i)
-          	write (iulog,*) 'gamma_ad & dtdz', gamma_ad, dtdz(i,k)
-		write (iulog,*) 'k_eff=', k_eff(i,k)
-          	write (iulog,*) 'var_t=', var_t(i,k)
-		write (iulog,*) 'xi=', xi(i,k)
-		write (iulog,*) 'k_e=', k_e(i,k)
-		write (iulog,*) 'k_wave=', k_wave(i,k) 
-               	endif	
-          endif
-         enddo
-        enddo
-      enddo
-END IF 
+
+
 
 
 end subroutine effective_gw_diffusivity
@@ -377,8 +361,8 @@ enddo
    enddo
 
  !Compute K_eff (total effective diffusvity due to waves + Kzz)
-  do k=2,pver
-     lapse_rate_sq(:,k)= (gamma_ad+dtdz(:,k))**2. 
+  do k=2,pver !here we are at interfaces
+     lapse_rate_sq(:,k)= (gamma_ad+dtdz(:,k-1))**2. 
 
      f_n_gammad(:,k)=( 1-(4._r8/3._r8)*(coriolis_f/ni(:,k))**0.5 )*gamma_ad
      b(:,k)=(cp_r-1._r8)*(var_t(:,k)/lapse_rate_sq(:,k))*( (2._r8*f_n_gammad(:,k)*(coriolis_f)**0.5 )/ti(i,k) )
