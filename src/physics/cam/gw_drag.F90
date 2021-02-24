@@ -709,27 +709,27 @@ subroutine gw_init()
       !add values for each peaks 
       do i = 1, 6
         write(cn, '(i1)') i
-        call addfld('k_wave_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A','m2/s', &
+        call addfld('k_wave_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'I','m2/s', &
           'Effective wave diffusivity orography')
-        call addfld('xi_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A',' ', &
+        call addfld('xi_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'I',' ', &
           'Instability parameter (Xi) orography')
-	call addfld('k_eff_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A',' m2/s', &
+	call addfld('k_eff_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'I',' m2/s', &
           'k_eff orography')
-	call addfld('k_e_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'A',' m2/s', &
+	call addfld('k_e_orog'//cn//'RDGBETA' ,(/ 'lev' /), 'I',' m2/s', &
           'k_e orography')
-	call addfld ('EKGW_orog'//cn//'RDGBETA', (/ 'ilev' /), 'A','M2/S', &
+	call addfld ('EKGW_orog'//cn//'RDGBETA', (/ 'ilev' /), 'I','M2/S', &
           'Effective Kzz orography')
       end do
       !add totals across orographic spectrum
-      call addfld ('k_wave_orog_tot_BETA',(/ 'lev' /), 'A','m2/s', &
+      call addfld ('k_wave_orog_tot_BETA',(/ 'lev' /), 'I','m2/s', &
           'Effective wave diffusivity orography')
-      call addfld ('xi_orog_tot_BETA',(/ 'lev' /)  ,  'A',' ', &
+      call addfld ('xi_orog_tot_BETA',(/ 'lev' /)  ,  'I',' ', &
           'Instability parameter (Xi) orography')
-      call addfld ('k_eff_orog_tot_BETA', (/ 'lev' /), 'A','m2/s', &
+      call addfld ('k_eff_orog_tot_BETA', (/ 'lev' /), 'I','m2/s', &
           'k_eff orography')
-      call addfld ('k_e_orog_tot_BETA', (/ 'lev' /), 'A','m2/s', &
+      call addfld ('k_e_orog_tot_BETA', (/ 'lev' /), 'I','m2/s', &
           'k_e orography')
-      call addfld ('EKGW_orog_tot_BETA' ,(/ 'ilev' /), 'A','M2/S', &
+      call addfld ('EKGW_orog_tot_BETA' ,(/ 'ilev' /), 'I','M2/S', &
           'Effective Kzz orography')
 
      end if
@@ -1079,18 +1079,18 @@ subroutine gw_init()
 
  if (use_gw_chem) then 			!MVG
      !total fields across the full GW spectrum 
-     call addfld ('k_wave_tot',(/ 'lev' /), 'A','m2/s', &
+     call addfld ('k_wave_tot',(/ 'lev' /), 'I','m2/s', &
           'Effective wave diffusivity (over the entire spectrum)')
-     call addfld ('xi_tot',(/ 'lev' /)  ,  'A',' ', &
+     call addfld ('xi_tot',(/ 'lev' /)  ,  'I',' ', &
           'Instability parameter (Xi_tot) (over the entire spectrum)')
-     call addfld ('k_eff_tot', (/ 'lev' /), 'A','m2/s', &
+     call addfld ('k_eff_tot', (/ 'lev' /), 'I','m2/s', &
           'total effective diffusivity (over the entire spectrum)')
-     call addfld ('k_e_tot', (/ 'lev' /), 'A','m2/s', &
+     call addfld ('k_e_tot', (/ 'lev' /), 'I','m2/s', &
           'K_e (over the entire spectrum)')
 
-     call addfld ('var_gwt_tot', (/ 'ilev' /), 'A','K2/Km2', &
+     call addfld ('var_gwt_tot', (/ 'ilev' /), 'I','K2/Km2', &
           'Variance of lapse rate of gw temperature perturbation')
-     call addfld ('dtdz', (/ 'lev' /), 'A','K2/Km2', &
+     call addfld ('dtdz', (/ 'lev' /), 'I','K2/Km2', &
           'Dt/Dz environment')
  end if
 
@@ -2131,7 +2131,7 @@ subroutine gw_tend(state, pbuf, dt, ptend, cam_in, flx_heat)
      call outfld ('k_wave_tot', k_wave_tot, ncol, lchnk)
      call outfld ('xi_tot', xi_tot, ncol, lchnk)
      call outfld ('k_e_tot', k_e_tot, ncol, lchnk)
-     call outfld ('k_eff_tot', k_e_tot, ncol, lchnk)
+     call outfld ('k_eff_tot', k_eff_tot, ncol, lchnk)
     
      call outfld ('var_gwt_tot', var_gwt_tot, ncol, lchnk)
      call outfld ('dtdz', dtdz, ncol, lchnk)     
@@ -2924,17 +2924,16 @@ subroutine gw_chem_addflds(prefix, scheme, band, history_defaults)
   ! 10 chars is enough for "BTAUXSn32"
   !-----------------------------------------------------------------------
 
-  ! Overall wind tendencies.
-  call addfld (trim(prefix)//'_k_wave',(/ 'lev' /), 'A','m2/s', &
+  call addfld (trim(prefix)//'_k_wave',(/ 'lev' /), 'I','m2/s', &
        trim(scheme)//' Effective wave diffusivity')
-  call addfld (trim(prefix)//'_xi',(/ 'lev' /), 'A','', &
+  call addfld (trim(prefix)//'_xi',(/ 'lev' /), 'I','', &
        trim(scheme)//' Instability parameter')
-  call addfld (trim(prefix)//'_k_e',(/ 'lev' /), 'A','m2/s', &
+  call addfld (trim(prefix)//'_k_e',(/ 'lev' /), 'I','m2/s', &
        trim(scheme)//' k_e')
-  call addfld (trim(prefix)//'_k_eff',(/ 'lev' /), 'A','m2/s', &
+  call addfld (trim(prefix)//'_k_eff',(/ 'lev' /), 'I','m2/s', &
        trim(scheme)//' k_eff')
 
-  call addfld (trim(prefix)//'_EKGW',(/ 'ilev' /), 'A','m2/s', &
+  call addfld (trim(prefix)//'_EKGW',(/ 'ilev' /), 'I','m2/s', &
        trim(scheme)//' Effective Kzz due to diffusion by gravity waves')
 
 end subroutine gw_chem_addflds

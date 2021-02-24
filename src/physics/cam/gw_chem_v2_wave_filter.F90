@@ -130,7 +130,7 @@ do i=1,ncol
         !compute momentum flux MF (m2/s2) from the wave stress tau (Pa)
          mom_flux(i,l,k)=tau(i,l,k)/rhoi(i,k)     
 
-	 !compute gw intrinsic speed, frequency and vertical wavenumber
+	 !compute gw intrinsic frequency and vertical wavenumber
          c_i(i,l,k)=c_speed(i,l)-ubi(i,k) 
 
          IF (c_i(i,l,k) .ne. 0) then
@@ -158,8 +158,65 @@ enddo
            	 	  gw_frq, m, var_t, dtdz, k_eff, k_eff_sqr,       &
            		  lapse_rate_sq, f_n_gammad, f_ln_nf, kwvrdg)
 
+times=0.
+wave_filter: DO
+times=times+1
+ var_t_initial(:,:)=var_t(:,:)
+ do i=1,ncol
+  do k = 1, pver+1 
+   do l = -band%ngwv, band%ngwv
+     !filter out from spectrum those waves that are damped by wave-induced diffusion and retain only
+     !those satisfying the following criterion 
+     if ( m(i,l,k)*k_eff(i,k) .lt. gw_frq(i,l,k)/m(i,l,k)) then 
+        m(i,l,k)=m(i,l,k)
+        gw_frq(i,l,k)=gw_frq(i,l,k)
+     else
+        m(i,l,k)=0._r8
+        gw_frq(i,l,k)=0._8
+     endif
+    enddo
+  enddo
+ enddo
 
-  !compute instability parameter and energy term using Var(T) and k_eff 
+
+ !Recompute var_t and k_eff for the new filtered spectrum
+ call compute_VarT_Keff (ncol, band, lambda_h, t, ti, rhoi, ni, egwdffi,         &
+           		zm, cp_r, gamma_ad, coriolis_f,  mom_flux,      &
+           	 	gw_frq, m, var_t, dtdz, k_eff, k_eff_sqr, lapse_rate_sq, &
+           		f_n_gammad, f_ln_nf, kwvrdg)
+
+  !evaluate if the new var_t is much different from the previous var_t, IF change is larger than 5% of previous 
+  !value anywhere in the domain (icount not zero), re-filter wave spectrum (loop continues). If change is less than 5%
+  !everywhere (icount=0) var_t and k_eff stabilized thus exit loop.
+  icount=0.
+  do i=1,ncol
+   do k = 1, pver+1 
+     if (  (abs(var_t(i,k)-var_t_initial(i,k)) .gt. 0.05*var_t_initial(i,k)) ) then  !(var_t(i,k) .ne. 0._r8) .and.
+        icount=icount+1												 
+     endif
+   !IF (masterproc) then
+   !    if (k .eq. 14) then
+   !     if (var_t_initial(i,k) .ne. 0._r8) then
+   !    write (iulog,*) 'var_t, var_t_initial, k_eff', i, k, var_t(i,k), var_t_initial(i,k), k_eff(i,k)
+   !    write (iulog,*) 'var_t - var_t_initial', var_t(i,k)- var_t_initial(i,k)
+   !    write (iulog,*) 'times, icount', times, icount
+   !    endif
+   !    endif
+   !ENDIF
+  enddo
+ enddo
+
+  if (icount .eq. 0.) then
+       !IF (masterproc) then
+        !write (iulog,*) 'EXITING WAVE FILTER HERE icount=', icount, times
+       !ENDIF
+    exit wave_filter
+  endif
+
+ENDDO wave_filter
+
+  !compute instability parameter and energy term using the final Var(T) and k_eff values after filtering
+
  do i=1,ncol
   do k=2,pver
       if (k_eff(i,k) .ne. 0.)  then
@@ -303,24 +360,20 @@ enddo
    enddo
 
  !Compute K_eff (total effective diffusvity due to waves + Kzz)
-do i=1,ncol
   do k=2,pver !here we are at interfaces
-  
-     lapse_rate_sq(i,k)= (gamma_ad+dtdz(i,k-1))**2. 
+     lapse_rate_sq(:,k)= (gamma_ad+dtdz(:,k-1))**2. 
 
-     f_n_gammad(i,k)=( 1-(4._r8/3._r8)*(coriolis_f(i)/ni(i,k))**0.5 )*gamma_ad
-     b(i,k)=(cp_r-1._r8)*(var_t(i,k)/lapse_rate_sq(i,k))*( (2._r8*f_n_gammad(i,k)*(coriolis_f(i))**0.5 )/ti(i,k) )
-     b_sq(i,k)=b(i,k)**2.
-     f_ln_nf(i,k)=coriolis_f(i)*log(ni(i,k)/coriolis_f(i))
-     c(i,k)= (var_t(i,k)*f_ln_nf(i,k)) / (2._r8*lapse_rate_sq(i,k))
+     f_n_gammad(:,k)=( 1-(4._r8/3._r8)*(coriolis_f/ni(:,k))**0.5 )*gamma_ad
+     b(:,k)=(cp_r-1._r8)*(var_t(:,k)/lapse_rate_sq(:,k))*( (2._r8*f_n_gammad(:,k)*(coriolis_f)**0.5 )/ti(:,k) )
+     b_sq(:,k)=b(:,k)**2.
+     f_ln_nf(:,k)=coriolis_f*log(ni(:,k)/coriolis_f)
+     c(:,k)= (var_t(:,k)*f_ln_nf(:,k)) / (2._r8*lapse_rate_sq(:,k))
 
-     k_eff_sqr(i,k)=b(i,k)+(b_sq(i,k)+c(i,k)+egwdffi(i,k))**0.5
-     k_eff(i,k)=(k_eff_sqr(i,k))**2.
-
+     k_eff_sqr(:,k)=b(:,k)+(b_sq(:,k)+c(:,k)+egwdffi(:,k))**0.5
+     k_eff(:,k)=(k_eff_sqr(:,k))**2.
  enddo
-enddo
+
 
 
 end subroutine compute_VarT_Keff
 end module gw_chem
-  
