@@ -72,7 +72,7 @@ use gw_utils, only: midpoint_interp
   real(r8), intent(out) :: k_eff(ncol,pver)
 
   ! Variance of T'
-  real(r8), intent(out)  :: var_t(ncol,pver+1)
+  real(r8), intent(out)  :: var_t(ncol,pver)
   ! Dt/Dz environment 
   real(r8), intent(out)  :: dtdz(ncol, pver)
 
@@ -111,10 +111,11 @@ use gw_utils, only: midpoint_interp
 				      k_eff_sqr, one_min_xi
 
  !compute adiabatic lapse rate(K/m) and R/Cp ratio
- gamma_ad=(gravit/cpair) !*1000.
+ gamma_ad=gravit/cpair
  cp_r= cpair/R_air
  !compute temperature at interface (call function)
  ti(:,2:pver)=midpoint_interp(t)
+
 
  !Compute the coriolis frequency (rad/s) and set it to 2pi/24h for equatorial regions
   where (abs(lat) <= 30._r8*degree_radian)
@@ -125,7 +126,7 @@ use gw_utils, only: midpoint_interp
  
  
 do i=1,ncol
- do k = 1, pver+1 
+ do k = 2, pver !disregard first and last (pver+1) interface values, the rest of variables are defined with centred differences of mid-points values
   do l = -band%ngwv, band%ngwv
         !compute momentum flux MF (m2/s2) from the wave stress tau (Pa)
          mom_flux(i,l,k)=tau(i,l,k)/rhoi(i,k)     
@@ -152,25 +153,33 @@ do i=1,ncol
   enddo
  enddo
 enddo
-  !Compute the Total temperature perturbation variance and the total effective diffusivity for the initial spectrum 
+
+  !Compute the Total temperature perturbation variance and the total effective diffusivity
+ IF (present(kwvrdg)) then          
   call compute_VarT_Keff (ncol, band, lambda_h, t, ti, rhoi, ni, egwdffi, &
            		  zm, cp_r, gamma_ad, coriolis_f,  mom_flux,      &
            	 	  gw_frq, m, var_t, dtdz, k_eff, k_eff_sqr,       &
-           		  lapse_rate_sq, f_n_gammad, f_ln_nf, kwvrdg)
+           		  lapse_rate_sq, f_n_gammad, f_ln_nf, kwvrdg=kwvrdg)
+ ELSE
+   call compute_VarT_Keff (ncol, band, lambda_h, t, ti, rhoi, ni, egwdffi, &
+           		  zm, cp_r, gamma_ad, coriolis_f,  mom_flux,      &
+           	 	  gw_frq, m, var_t, dtdz, k_eff, k_eff_sqr,       &
+          		  lapse_rate_sq, f_n_gammad, f_ln_nf)
+ ENDIF
 
 
   !compute instability parameter and energy term using Var(T) and k_eff 
- do i=1,ncol
   do k=2,pver
-      if (k_eff(i,k) .ne. 0.)  then
-      k_e(i,k)=(var_t(i,k)/lapse_rate_sq(i,k))*( (4._r8*f_n_gammad(i,k))/ti(i,k) )*k_eff_sqr(i,k)*(coriolis_f(i))**0.5
-      xi(i,k)=(var_t(i,k)/lapse_rate_sq(i,k))*( f_ln_nf(i,k)/(2*k_eff(i,k)) ) 
-      else
-      k_e(i,k)=0.
-      xi(i,k)=0.
-      endif
+     where (k_eff(:,k) .ne. 0.) 
+      k_e(:,k)=(var_t(:,k)/lapse_rate_sq(:,k))*( (4._r8*f_n_gammad(:,k))/ti(:,k) )*k_eff_sqr(:,k)*(coriolis_f)**0.5
+      xi(:,k)=(var_t(:,k)/lapse_rate_sq(:,k))*( f_ln_nf(:,k)/(2*k_eff(:,k)) ) 
+      xi(:,k)=min(0.99, xi(:,k))
+     elsewhere
+      k_e(:,k)=0.
+      xi(:,k)=0.
+     end where
   enddo
-enddo
+
 
 
  !Finally compute k_wave
@@ -180,15 +189,15 @@ enddo
                    (cp_r-1._r8)*k_e(:,k) )
    enddo
 
-   !set variables at model top (k=1) [k=2 first point for centred differences] and at surface (k=70) [no waves & var_t=0] to be zero
+   !set variables at model top (k=1) to  zero
    k_wave(:,1)=0._r8
    xi(:,1)=0._r8
    k_e(:,1)=0._r8
    k_eff(:,1)=0._r8
-   k_wave(:,pver)=0._r8
-   xi(:,pver)=0._r8
-   k_e(:,pver)=0._r8
-   k_eff(:,pver)=0._r8
+   !k_wave(:,pver)=0._r8
+   !xi(:,pver)=0._r8
+   !k_e(:,pver)=0._r8
+   !k_eff(:,pver)=0._r8
 
 
 end subroutine effective_gw_diffusivity
@@ -240,7 +249,7 @@ use physconst, only: gravit
 
   real(r8), intent(out) :: k_eff(ncol,pver)
   real(r8), intent(out) :: k_eff_sqr(ncol,pver)
-  real(r8), intent(out) :: var_t(ncol,pver+1)
+  real(r8), intent(out) :: var_t(ncol,pver)
   real(r8), intent(out) :: dtdz(ncol, pver)  
   ! Temporary values used for calculations also to be used for the computaton of k_e and xi
   real(r8), intent(out) :: lapse_rate_sq(ncol,pver)
@@ -263,15 +272,14 @@ use physconst, only: gravit
   real(r8), dimension(ncol,pver+1) :: g_NT_sq
   real(r8), dimension(ncol, pver)  :: b, b_sq, c
 				      
- 
-!compute variance of tot temperature perturbation Var(T') = SUM(T'^2) across whole spectrum 
+
+!compute variance of tot temperature perturbation Var(T') = SUM(0.5*T'^2) across whole spectrum 
 do i=1,ncol
- do k = 1, pver+1
+ do k = 2, pver
   var_t(i,k)=0._r8
   do l = -band%ngwv, band%ngwv
 
-      ! FOR INITIAL SPECTRUM: exclude critical levels where c_i=0 and thus gw_freq=0 and m=0
-      ! FOR FILTERING: exclude those waves that were damped by diffussion and for which we set gw_freq=0 and m=0
+      ! exclude critical levels where c_i=0 and thus gw_freq=0 and m=0
       IF (gw_frq(i,l,k) .ne. 0._r8) then           
 	lambda_z(i,l, k)= (2._r8*pi)/m(i,l,k)
 
@@ -292,6 +300,7 @@ do i=1,ncol
      ELSE !set contribution from waves with gw_freq=0 to total variance zero
         var_t(i,k)= var_t(i,k)+ 0._r8
      ENDIF
+
   enddo 
  enddo 
 enddo 
@@ -299,26 +308,23 @@ enddo
  !Compute Dt/Dz (K/m)
    do k = pver-1,1,-1
       dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1)) !we are using t at mid-points so dtdz is computed 
-      !dtdz(:,k)=dtdz(:,k)*1000.    	 	      !at interfaces where Var(T') is defined 
+      						      !at interfaces where Var(T') is defined 
    enddo
 
  !Compute K_eff (total effective diffusvity due to waves + Kzz)
-do i=1,ncol
-  do k=2,pver !here we are at interfaces
-  
-     lapse_rate_sq(i,k)= (gamma_ad+dtdz(i,k-1))**2. 
+  do k=2,pver !here we are at interfaces 
+     lapse_rate_sq(:,k)= (gamma_ad+dtdz(:,k-1))**2. 
 
-     f_n_gammad(i,k)=( 1-(4._r8/3._r8)*(coriolis_f(i)/ni(i,k))**0.5 )*gamma_ad
-     b(i,k)=(cp_r-1._r8)*(var_t(i,k)/lapse_rate_sq(i,k))*( (2._r8*f_n_gammad(i,k)*(coriolis_f(i))**0.5 )/ti(i,k) )
-     b_sq(i,k)=b(i,k)**2.
-     f_ln_nf(i,k)=coriolis_f(i)*log(ni(i,k)/coriolis_f(i))
-     c(i,k)= (var_t(i,k)*f_ln_nf(i,k)) / (2._r8*lapse_rate_sq(i,k))
+     f_n_gammad(:,k)=( 1-(4._r8/3._r8)*(coriolis_f/ni(:,k))**0.5 )*gamma_ad
+     b(:,k)=(cp_r-1._r8)*(var_t(:,k)/lapse_rate_sq(:,k))*( (2._r8*f_n_gammad(:,k)*(coriolis_f)**0.5 )/ti(:,k) )
+     b_sq(:,k)=b(:,k)**2.
+     f_ln_nf(:,k)=coriolis_f*log(ni(:,k)/coriolis_f)
+     c(:,k)= (var_t(:,k)*f_ln_nf(:,k)) / (2._r8*lapse_rate_sq(:,k))
 
-     k_eff_sqr(i,k)=b(i,k)+(b_sq(i,k)+c(i,k)+egwdffi(i,k))**0.5
-     k_eff(i,k)=(k_eff_sqr(i,k))**2.
-
+     k_eff_sqr(:,k)=b(:,k)+(b_sq(:,k)+c(:,k)+egwdffi(:,k))**0.5
+     k_eff(:,k)=(k_eff_sqr(:,k))**2.
  enddo
-enddo
+
 
 
 end subroutine compute_VarT_Keff
