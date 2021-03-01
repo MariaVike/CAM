@@ -24,8 +24,8 @@ contains
 !==========================================================================
 
 subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt,    &
-           t, rhoi, nm, ni, c_speed, tau, egwdffi, ubi, k_wave, xi, k_e,  & 
-           zm, zi, var_t, dtdz, brnt_v, lat, kwvrdg)
+           t, rhoi, nm, ni, c_speed, tau, egwdffi, ubi, k_wave, xi, k_e, k_eff,  &
+           zm, zi, var_t, dtdz, lat, kwvrdg)
 !-----------------------------------------------------------------------
 ! Compute K_wave (wave effective diffusivity) etc...
 ! ....
@@ -69,13 +69,12 @@ use gw_utils, only: midpoint_interp
   real(r8), intent(out) :: k_wave(ncol,pver) !total over entire wave spectrum for each GW source (i.e. Beres and C&M)
   real(r8), intent(out) :: xi(ncol,pver)
   real(r8), intent(out) :: k_e(ncol,pver)
+  real(r8), intent(out) :: k_eff(ncol,pver)
 
   ! Variance of T'
   real(r8), intent(out)  :: var_t(ncol,pver)
   ! Dt/Dz environment 
   real(r8), intent(out)  :: dtdz(ncol, pver)
-  ! Interface Brunt-Vaisala frequency computed locally.
-  real(r8), intent (out) :: brnt_v(ncol,pver)
 
   
   !---------------------------Local storage-------------------------------
@@ -101,18 +100,15 @@ use gw_utils, only: midpoint_interp
   real(r8), parameter :: degree_radian = pi/180._r8
   !convert hours to seconds
   real(r8), parameter :: hr_sec = 3600._r8
-  !Coriolis frequency and inertial period
-  real(r8) :: coriolis_f(size(lat)), inertial_prd(size(lat))
-  ! Interface Brunt-Vaisala frequency squared computed locally.
-  real(r8) :: brnt_v_sq(ncol,pver)
-  ! Min value for Brunt_vaisala frequenncy squared
-  real(r8), parameter :: brnt_v_sq_min = 5.e-5_r8
-  ! Environmental lapse-rate: -dT/dz
-  real(r8) :: gamma_env(ncol,pver)
+  !Coriolis frequency 
+  real(r8) :: coriolis_f(size(lat))
 
+  ! Temporary values for wave filtering
+  real(r8):: var_t_initial(ncol,pver+1)
 
   ! Temporary values used for calculations
-  real(r8), dimension(ncol, pver)  :: one_min_xi
+  real(r8), dimension(ncol, pver)  :: f_n_gammad, f_ln_nf,lapse_rate_sq, &
+				      k_eff_sqr, one_min_xi
 
  !compute adiabatic lapse rate(K/m) and R/Cp ratio
  gamma_ad=gravit/cpair
@@ -120,13 +116,6 @@ use gw_utils, only: midpoint_interp
  !compute temperature at interface (call function)
  ti(:,2:pver)=midpoint_interp(t)
 
- !Compute Brunt_vaisala freq at interfaces using mid-poit temperatures (s-1)
-   do k = pver-1,1,-1
-      dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1)) 
-      gamma_env(:,k)=-dtdz(:,k)
-      brnt_v_sq(:,k)=gravit/ti(:,k+1)*(gamma_ad - gamma_env(:,k))
-      brnt_v(:,k)=(max(brnt_v_sq_min, brnt_v_sq(:,k)))**0.5
-   enddo
 
  !Compute the coriolis frequency (rad/s) and set it to 2pi/24h for equatorial regions
   where (abs(lat) <= 30._r8*degree_radian)
@@ -134,8 +123,6 @@ use gw_utils, only: midpoint_interp
   elsewhere
    coriolis_f=abs( (2._r8*pi*sin(lat))/(12._r8*hr_sec) )
   end where
-  !Compute inertial period (s)
-  inertial_prd= 2._r8*pi/coriolis_f
  
  
 do i=1,ncol
@@ -151,9 +138,9 @@ do i=1,ncol
 	   gw_frq(i,l,k)=abs(c_i(i,l,k))/lambda_h
 
            if (present(kwvrdg)) then
-            m(i,l,k)= (brnt_v(i,k-1)*kwvrdg(i))/gw_frq(i,l,k)
+            m(i,l,k)= (ni(i,k)*kwvrdg(i))/gw_frq(i,l,k)
 	   else
-            m(i,l,k)= (brnt_v(i,k-1)*band%kwv)/gw_frq(i,l,k)
+            m(i,l,k)= (ni(i,k)*band%kwv)/gw_frq(i,l,k)
 	   endif
          ELSE
           !at critical levels where c_i=0 (i.e. c=ubi) tau=0
@@ -167,39 +154,60 @@ do i=1,ncol
  enddo
 enddo
 
- !Compute the Total temperature perturbation variance (var_t), the wave energy flux (K_e) and the instability parameter (xi)
+  !Compute the Total temperature perturbation variance and the total effective diffusivity
  IF (present(kwvrdg)) then          
-  call compute_VarT (ncol, band, lambda_h, t, ti, rhoi, brnt_v, egwdffi,      &
-           	     zm, cp_r, gamma_ad, coriolis_f, inertial_prd,  mom_flux, &
-           	     gw_frq, m, var_t, k_e, xi, dtdz, kwvrdg=kwvrdg)      
+  call compute_VarT_Keff (ncol, band, lambda_h, t, ti, rhoi, ni, egwdffi, &
+           		  zm, cp_r, gamma_ad, coriolis_f,  mom_flux,      &
+           	 	  gw_frq, m, var_t, dtdz, k_eff, k_eff_sqr,       &
+           		  lapse_rate_sq, f_n_gammad, f_ln_nf, kwvrdg=kwvrdg)
  ELSE
-   call compute_VarT (ncol, band, lambda_h, t, ti, rhoi, brnt_v, egwdffi,      &
-           	      zm, cp_r, gamma_ad, coriolis_f, inertial_prd,  mom_flux, &
-           	      gw_frq, m, var_t, k_e, xi, dtdz) 
+   call compute_VarT_Keff (ncol, band, lambda_h, t, ti, rhoi, ni, egwdffi, &
+           		  zm, cp_r, gamma_ad, coriolis_f,  mom_flux,      &
+           	 	  gw_frq, m, var_t, dtdz, k_eff, k_eff_sqr,       &
+          		  lapse_rate_sq, f_n_gammad, f_ln_nf)
  ENDIF
 
 
+  !compute instability parameter and energy term using Var(T) and k_eff 
+  do k=2,pver
+     where (k_eff(:,k) .ne. 0.) 
+      k_e(:,k)=(var_t(:,k)/lapse_rate_sq(:,k))*( (4._r8*f_n_gammad(:,k))/ti(:,k) )*k_eff_sqr(:,k)*(coriolis_f)**0.5
+      xi(:,k)=(var_t(:,k)/lapse_rate_sq(:,k))*( f_ln_nf(:,k)/(2*k_eff(:,k)) ) 
+      xi(:,k)=min(0.99, xi(:,k))
+     elsewhere
+      k_e(:,k)=0.
+      xi(:,k)=0.
+     end where
+  enddo
+
  !Finally compute k_wave
    do k = 2, pver
-      one_min_xi(:,k) =1.-xi(:,k)    
-      k_wave(:,k)=(1./one_min_xi(:,k))*( xi(:,k)*egwdffi(:,k)+ & 
-                   (cp_r-1.)*k_e(:,k) )
+      one_min_xi(:,k) =1._r8-xi(:,k)    
+      k_wave(:,k)=(1._r8/one_min_xi(:,k))*( xi(:,k)*egwdffi(:,k)+ & 
+                   (cp_r-1._r8)*k_e(:,k) )
    enddo
 
    !set variables at model top (k=1) to  zero
    k_wave(:,1)=0._r8
    xi(:,1)=0._r8
    k_e(:,1)=0._r8
+   k_eff(:,1)=0._r8
+   !k_wave(:,pver)=0._r8
+   !xi(:,pver)=0._r8
+   !k_e(:,pver)=0._r8
+   !k_eff(:,pver)=0._r8
+
 
 end subroutine effective_gw_diffusivity
 
 !==========================================================================
-subroutine compute_VarT (ncol, band, lambda_h, t, ti, rhoi, brnt_v, egwdffi,       &
-           		 zm, cp_r, gamma_ad, coriolis_f, inertial_prd,  mom_flux,  &
-           	 	 gw_frq, m, var_t, k_e, xi, dtdz, kwvrdg)
+subroutine compute_VarT_Keff (ncol, band, lambda_h, t, ti, rhoi, ni, egwdffi, &
+           		      zm, cp_r, gamma_ad, coriolis_f,  mom_flux,      &
+           	 	      gw_frq, m, var_t, dtdz, k_eff, k_eff_sqr,       &
+           		      lapse_rate_sq, f_n_gammad, f_ln_nf, kwvrdg)
 
 !-----------------------------------------------------------------------
-! Compute Var(T') and quantities tht depends on it such as and K_e...
+! Compute Var(T') and K_eff ...
 ! ....
 !-----------------------------------------------------------------------
 use gw_common, only: GWBand, pver, pi
@@ -218,13 +226,13 @@ use physconst, only: gravit
   ! Interface density (Kg m-3)
   real(r8), intent(in) :: rhoi(ncol,pver+1)
   ! Interface Brunt-Vaisala frequency.
-  !real(r8), intent(in) ::  ni(ncol,pver+1)
+  real(r8), intent(in) ::  ni(ncol,pver+1)
   ! Effective gravity wave diffusivity at interfaces.
   real(r8), intent(in) :: egwdffi(ncol,pver+1)
   ! Midpoint and Interface altitudes above ground (m).
   real(r8), intent(in) :: zm(ncol,pver)   
   !Coriolis frequency 
-  real(r8), intent(in)  :: coriolis_f(:), inertial_prd(:)
+  real(r8), intent(in)  :: coriolis_f(:)
   ! Adiabatic lapse rate and R/cp ratio
   real(r8), intent(in) :: gamma_ad, cp_r 
   ! The absolute momenum flux computed from tau
@@ -233,16 +241,19 @@ use physconst, only: gravit
   real(r8), intent(in) :: gw_frq(ncol,-band%ngwv:band%ngwv, pver+1)
   ! Vertical wavenumber m
   real(r8), intent(in) :: m(ncol,-band%ngwv:band%ngwv,pver+1) 
-  ! Brunt Vaisala frequency
-  real(r8), intent(in) :: brnt_v(ncol,pver)   
-  ! horizontal wavenumber [anisotropic orography].
+  ! horiz wavenumber [anisotropic orography].
   real(r8), intent(in), optional :: kwvrdg(ncol)
- 
+  
 
+  real(r8), intent(out) :: k_eff(ncol,pver)
+  real(r8), intent(out) :: k_eff_sqr(ncol,pver)
   real(r8), intent(out) :: var_t(ncol,pver)
-  real(r8), intent(out) :: k_e(ncol,pver)
-  real(r8), intent(out) :: xi(ncol,pver)
-  real(r8), intent(out) :: dtdz(ncol,pver)  
+  real(r8), intent(out) :: dtdz(ncol, pver)  
+  ! Temporary values used for calculations also to be used for the computaton of k_e and xi
+  real(r8), intent(out) :: lapse_rate_sq(ncol,pver)
+  real(r8), intent(out) :: f_n_gammad(ncol,pver)
+  real(r8), intent(out) :: f_ln_nf(ncol,pver)
+
   
   !---------------------------Local storage-------------------------------
 
@@ -255,17 +266,10 @@ use physconst, only: gravit
   real(r8) :: lambda_h_rdg(ncol) 
   ! GW temperature perturbation
   real(r8):: gw_t(ncol,-band%ngwv:band%ngwv,pver+1)
-  !Characteristic Vertical wavelength
-  real(r8):: lmbd_z_star(ncol,pver)
-  !Buoyancy vertical wavenumber squared (1/m2)
-  real(r8), parameter :: m_b_sq=(2*pi/1000.)**2.	
-  !Tunable parameter to bound instability parameter
-  real(r8), parameter :: alpha=1./8.
-
-  !Temporary values used for calculations locally
+  ! Temporary values used for calculations locally
   real(r8), dimension(ncol,pver+1) :: g_NT_sq
-  real(r8), dimension(ncol, pver)  :: lapse_rate_sq, f_n, & 
-			              alpha_lapse_rate_sq			      
+  real(r8), dimension(ncol, pver)  :: b, b_sq, c
+				      
 
 !compute variance of tot temperature perturbation Var(T') = SUM(0.5*T'^2) across whole spectrum 
 do i=1,ncol
@@ -275,10 +279,10 @@ do i=1,ncol
 
       ! exclude critical levels where c_i=0 and thus gw_freq=0 and m=0
       IF (gw_frq(i,l,k) .ne. 0._r8) then           
-	lambda_z(i,l, k)= (2.*pi)/m(i,l,k)
+	lambda_z(i,l, k)= (2._r8*pi)/m(i,l,k)
 
         if (present(kwvrdg)) then
-         lambda_h_rdg(i)= (2*pi)/kwvrdg(i)
+         lambda_h_rdg(i)= (2._r8*pi)/kwvrdg(i)
          lambda_ratio(i,l,k)=lambda_z(i,l,k)/lambda_h_rdg(i)
         else
          lambda_ratio(i,l,k)=lambda_z(i,l,k)/lambda_h
@@ -286,12 +290,12 @@ do i=1,ncol
 
 	!use MF (m2/s2) to compute T' (K) using the polar eqs and dispersion 
         !rels for mid-freq Gws (see e.g. see Ern et al 2004)
-        g_NT_sq(i,k)= ( gravit/(brnt_v(i,k-1)*ti(i,k)) )**2.
+        g_NT_sq(i,k)= ( gravit/(ni(i,k)*ti(i,k)) )**2.
         gw_t(i,l,k)= ( mom_flux(i,l,k)/(0.5*lambda_ratio(i,l,k)*g_NT_sq(i,k)) )**0.5 ! MF and T' are computed at interfaces (k+1/2)
 
         !compute Var(T')
         var_t(i,k)= var_t(i,k)+ 0.5*gw_t(i,l,k)**2.
-     ELSE !set contribution from waves with gw_freq=0 to total variance to zero
+     ELSE !set contribution from waves with gw_freq=0 to total variance zero
         var_t(i,k)= var_t(i,k)+ 0._r8
      ENDIF
 
@@ -299,28 +303,28 @@ do i=1,ncol
  enddo 
 enddo 
 
- !Compute Dt/Dz (K/km)
+ !Compute Dt/Dz (K/m)
    do k = pver-1,1,-1
       dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1)) !we are using t at mid-points so dtdz is computed 
-      		     			              !at interfaces where Var(T') is defined 
-   enddo   
+      						      !at interfaces where Var(T') is defined 
+   enddo
 
- !Compute K_e (energy flux due to waves) and xi (instability parameter)
+ !Compute K_eff (total effective diffusvity due to waves + Kzz)
   do k=2,pver !here we are at interfaces 
-
      lapse_rate_sq(:,k)= (gamma_ad+dtdz(:,k-1))**2. 
-     alpha_lapse_rate_sq(:,k)= alpha*lapse_rate_sq(:,k)
-     f_n(:,k)=1.-(4./3.)*sqrt(coriolis_f(:)/brnt_v(:,k-1))
 
-     lmbd_z_star(:,k)=(2*pi)*sqrt( var_t(:,k)/alpha_lapse_rate_sq(:,k) + 1/(2*m_b_sq) )
-     
-     k_e(:,k)=(var_t(:,k)/lapse_rate_sq(:,k))*( (4.*f_n(:,k)*gamma_ad)/ti(:,k) )*(lmbd_z_star(:,k)/inertial_prd(:))
-     xi(:,k)=alpha/4. + alpha/2. *log( ((m_b_sq*var_t(:,k))/alpha_lapse_rate_sq(:,k)) + 0.5)
-     !xi(:,k)=min(0.99, xi(:,k))
-     
-  enddo
+     f_n_gammad(:,k)=( 1-(4._r8/3._r8)*(coriolis_f/ni(:,k))**0.5 )*gamma_ad
+     b(:,k)=(cp_r-1._r8)*(var_t(:,k)/lapse_rate_sq(:,k))*( (2._r8*f_n_gammad(:,k)*(coriolis_f)**0.5 )/ti(:,k) )
+     b_sq(:,k)=b(:,k)**2.
+     f_ln_nf(:,k)=coriolis_f*log(ni(:,k)/coriolis_f)
+     c(:,k)= (var_t(:,k)*f_ln_nf(:,k)) / (2._r8*lapse_rate_sq(:,k))
 
-end subroutine compute_VarT
+     k_eff_sqr(:,k)=b(:,k)+(b_sq(:,k)+c(:,k)+egwdffi(:,k))**0.5
+     k_eff(:,k)=(k_eff_sqr(:,k))**2.
+ enddo
 
+
+
+end subroutine compute_VarT_Keff
 end module gw_chem
   
