@@ -12,9 +12,6 @@ use coords_1d,    only: Coords1D
 use spmd_utils,   only: masterproc
 use cam_logfile,  only: iulog
 use ref_pres,     only: pref_edge
-use time_manager, only: get_nstep
-use physics_types, only: physics_state
-use ppgrid,        only: begchunk, endchunk
 
 implicit none
 private
@@ -88,10 +85,9 @@ use gw_utils, only: midpoint_interp
 
   ! Level, wavenumber, and column loop indices.
   integer  :: k, l, i
+  real(r8) :: icount, times
   ! Bottom level for computation of k_wave
   integer  :: kwave_level
-  ! current timestep number
-  integer  :: nstep     
   ! Gas consant for dry air (m2 K-1 s-2)
   real(r8), parameter :: R_air = 287._r8
   ! Adiabatic lapse rate and R/cp ratio
@@ -104,14 +100,6 @@ use gw_utils, only: midpoint_interp
   real(r8) :: tau_dmp(ncol,-band%ngwv:band%ngwv,pver+1)
   ! Damping factor for tau profile
   real(r8) :: lambda_wave(ncol,-band%ngwv:band%ngwv,pver)
-  ! GW intrinsic frequency 
-  real(r8) :: gw_frq(ncol,-band%ngwv:band%ngwv,pver+1) 
-  ! Vertical wavenumber m
-  real(r8) :: m(ncol,-band%ngwv:band%ngwv,pver+1) 
-  ! GW intrinsic phase speed
-  real(r8):: c_i(ncol,-band%ngwv:band%ngwv,pver+1)
-  ! GW temperature perturbation
-  real(r8):: gw_t(ncol,-band%ngwv:band%ngwv,pver+1)
   ! Delta z computed across interfaces 
   real(r8) :: delta_z(ncol, pver+1)
   !convert degrees to radians
@@ -126,14 +114,6 @@ use gw_utils, only: midpoint_interp
   real(r8), parameter :: brnt_v_sq_min = 5.e-5_r8
   ! Environmental lapse-rate: -dT/dz
   real(r8) :: gamma_env(ncol,pver)
-
-  !counters to count number of waves at each vertical level
-  real(r8), dimension (ncol,pver) :: icount, icount_no_w, icount_nonzero
-  !undamped mom_flux, computed in order to output damped and undamed mom_flux
-  real(r8) :: mom_flux_undmp(ncol,-band%ngwv:band%ngwv,pver+1)
-  ! damping  factor and sum over all heights of damping factor
-  real(r8) :: dmp_sum(ncol,-band%ngwv:band%ngwv)
-  real(r8) :: dmp_factor(ncol,-band%ngwv:band%ngwv,pver+1)
 
 
  !compute adiabatic lapse rate(K/m) and R/Cp ratio
@@ -177,7 +157,6 @@ use gw_utils, only: midpoint_interp
   enddo
 
  !Compute momentum flux MF (m2/s2) from the wave stress tau (Pa) and damp it above 50km
- dmp_sum=0._r8
  DO k = kwave_level-1, 2, -1 !disregard first and last (kwave_level) interface values, the rest of variables are defined with 
 			     !centred differences of mid-points values
 
@@ -191,41 +170,34 @@ use gw_utils, only: midpoint_interp
         if (present(kwvrdg)) then          
   		call compute_kwave (ncol, band, lambda_h, ti(:,k), rhoi(:,k), brnt_v(:,k-1), egwdffi(:,k),     &
            	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), kwave_level,  &
-           	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k), &
-		     gw_frq(:,:,k),gw_t(:,:,k),c_i(:,:,k),m(:,:,k),icount(:,k),icount_no_w(:,k),icount_nonzero(:,k), kwvrdg=kwvrdg)      
+           	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k), kwvrdg=kwvrdg)      
  	else
   		call compute_kwave (ncol, band, lambda_h, ti(:,k), rhoi(:,k), brnt_v(:,k-1), egwdffi(:,k),     &
            	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), kwave_level,  &
-           	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k), &
-		     gw_frq(:,:,k),gw_t(:,:,k),c_i(:,:,k),m(:,:,k),icount(:,k),icount_no_w(:,k),icount_nonzero(:,k)) 
+           	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k)) 
  	endif
 
  ELSE
   
      !damp tau using k_wave value just calculated 
       do l = -band%ngwv, band%ngwv
-         dmp_factor(:,l,k)=lambda_wave(:,l,k+1)*delta_z(:,k) !damp tau using lambda_wave values from level below
-         dmp_sum(:,l)=dmp_sum(:,l)+dmp_factor(:,l,k)     !sum all damping coefficients to calculate tau profile as we go up
-	 tau_dmp(:,l,k)=tau(:,l,k)*exp(-2.*dmp_sum(:,l)) 
+	 tau_dmp(:,l,k)=tau(:,l,k)*exp(-2.*lambda_wave(:,l,k+1)*delta_z(:,k)) !damp tau using lambda_wave values from level below
          mom_flux(:,l,k)=tau_dmp(:,l,k)/rhoi(:,k) 
       enddo
-         
 
 	 !compute k_wave using damped tau values
         if (present(kwvrdg)) then          
   		call compute_kwave (ncol, band, lambda_h, ti(:,k), rhoi(:,k), brnt_v(:,k-1), egwdffi(:,k),     &
            	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), kwave_level,  &
-           	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k), &
-		     gw_frq(:,:,k),gw_t(:,:,k),c_i(:,:,k),m(:,:,k),icount(:,k),icount_no_w(:,k),icount_nonzero(:,k), kwvrdg=kwvrdg)          
+           	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k), kwvrdg=kwvrdg)      
  	else
   		call compute_kwave (ncol, band, lambda_h, ti(:,k), rhoi(:,k), brnt_v(:,k-1), egwdffi(:,k),     &
            	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), kwave_level,  &
-           	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k), &
-		     gw_frq(:,:,k),gw_t(:,:,k),c_i(:,:,k),m(:,:,k),icount(:,k),icount_no_w(:,k),icount_nonzero(:,k)) 
+           	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k)) 
  	endif 
 
    ENDIF
- ENDDO  
+ ENDDO
 
  !set variables at model top (k=1) and below 50 km to  zero
   k_wave(:,1)=0._r8
@@ -237,72 +209,12 @@ use gw_utils, only: midpoint_interp
   k_e(:,kwave_level:)=0._r8
   var_t(:,kwave_level:)=0._r8
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Open files and write variables wavenumber by wavenumber !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
- 
- !get time-step number 
-  nstep = get_nstep()
-
- 
- open(unit=20, file='lat_67S_lon41E_waves_damping')
-    !!write (20,*)  'dt, i, l, k, tau, mom_flux, ubi, c, ci, m, gw_t, gwfrq'
- open(unit=40, file='lat_67S_lon41E_varT_damping')
-    !!write (40,*)  'dt, i, k, N, Kzz, var_t, icount_waves, icount_nonzero, icount_no_w'
-  !!open(unit=60, file='lat_67S_lon41E_zm')
-
- !in order to output vertical prfiles complete tau_dmp array with un-damped tau values below 50 km and compute undpamed mom_flux
-  tau_dmp(:,:,kwave_level:)=tau(:,:,kwave_level:)
-  do k=2, pver
-   do l = -band%ngwv, band%ngwv
-         mom_flux_undmp(:,l,k)=tau(:,l,k)/rhoi(:,k)
-     enddo
-  enddo
-
-
-
-  do i=1,ncol
-     if (nstep .eq. 0) then
-       !if ( lat(i)  .lt. -69*degree_radian) then  
-       if ( (i .eq. 5) .and. (lat(i) .gt. -69*degree_radian .and. lat(i) .lt. -67*degree_radian) .and. & 
-          (lon(i) .gt. 40*degree_radian .and. lon(i) .lt. 42*degree_radian) ) then  
-         do l = -band%ngwv, band%ngwv
-          do k = 2, pver
-           if (var_t(i,k) .gt. 0.) then 
-	   write (20,*)  nstep,lat(i)*(180./pi), lon(i)*(180./pi), i,l,k, tau(i,l,k), tau_dmp(i,l,k), mom_flux(i,l,k), & 
-                         mom_flux_undmp(i,l,k), ubi(i,k), c_speed(i,l), c_i(i,l,k), m(i,l,k), gw_t(i,l,k), gw_frq(i,l,k)    
-           endif              
-          enddo
-        enddo 
-      endif  
-    endif   
- enddo 
-
-
- do i=1,ncol 
-  if (nstep .eq. 0) then 
-   !if ( lat(i)  .lt. -69*degree_radian) then  
-   if ( (i .eq. 5) .and. (lat(i) .gt. -69*degree_radian .and. lat(i) .lt. -67*degree_radian) .and. & 
-      (lon(i) .gt. 40*degree_radian .and. lon(i) .lt. 42*degree_radian) ) then       
-        do k = 2, pver
-          if (var_t(i,k) .gt. 0.) then  
- 	   write (40,*)  nstep, lat(i)*(180./pi), lon(i)*(180./pi), i, k, brnt_v(i,k-1), egwdffi(i,k), var_t(i,k), & 
-                     icount(i,k), icount_nonzero(i,k), icount_no_w(i,k)
-	  !!write (60,*)  dt, k, zm(i,k)
-          endif
-        enddo
-       endif
-     endif
- enddo
-
-
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 end subroutine effective_gw_diffusivity
 
 !==========================================================================
 subroutine compute_kwave (ncol, band, lambda_h, ti, rhoi, brnt_v, egwdffi,     &
            	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi, mom_flux, kwave_level,  &
-           	     dtdz, var_t, k_e, xi, k_wave, lambda_wave, gw_frq,gw_t,c_i,m,icount,icount_no_w,icount_nonzero, kwvrdg)  
+           	     dtdz, var_t, k_e, xi, k_wave, lambda_wave, kwvrdg)  
 
 !-----------------------------------------------------------------------
 ! Compute Var(T') and quantities tht depends on it such as and K_e...
@@ -351,7 +263,7 @@ use physconst, only: gravit
 
   !convert degrees to radians
   real(r8), parameter :: degree_radian = pi/180.
-  real(r8), dimension (ncol), intent(out) :: icount, icount_no_w, icount_nonzero
+  real(r8), dimension (ncol) :: icount, icount_no_w, icount_nonzero
   
   !---------------------------Local storage-------------------------------
 
@@ -363,13 +275,13 @@ use physconst, only: gravit
   ! horiz wavelength  [anisotropic orography]
   real(r8) :: lambda_h_rdg(ncol)
   ! GW intrinsic frequency 
-  real(r8), intent(out) :: gw_frq(ncol,-band%ngwv:band%ngwv) 
+  real(r8) :: gw_frq(ncol,-band%ngwv:band%ngwv) 
   ! Vertical wavenumber m
-  real(r8), intent(out) :: m(ncol,-band%ngwv:band%ngwv) 
+  real(r8) :: m(ncol,-band%ngwv:band%ngwv) 
   ! GW intrinsic phase speed
-  real(r8), intent(out):: c_i(ncol,-band%ngwv:band%ngwv)
+  real(r8):: c_i(ncol,-band%ngwv:band%ngwv)
   ! GW temperature perturbation
-  real(r8), intent(out):: gw_t(ncol,-band%ngwv:band%ngwv)
+  real(r8):: gw_t(ncol,-band%ngwv:band%ngwv)
   !Characteristic Vertical wavelength
   real(r8):: lmbd_z_star(ncol)
   !Buoyancy vertical wavenumber squared (1/m2)
@@ -449,6 +361,41 @@ do i=1,ncol
 
   enddo
 enddo 
+
+ !open(unit=20, file='lat_67S_lon41E_waves')
+    !!write (20,*)  'dt, i, l, k, tau, mom_flux, ubi, c, ci, m, gw_t, gwfrq'
+ !open(unit=40, file='lat_67S_lon41E_varT')
+    !!write (40,*)  'dt, i, k, N, Kzz, var_t, icount_waves, icount_nonzero, icount_no_w'
+  !!open(unit=60, file='lat_67S_lon41E_zm')
+  !do i=1,ncol
+  !   do l = -band%ngwv, band%ngwv
+  !     do k = 2, pver
+        !!if ( (lat(i) .lt. -60*degree_radian) .and. (lon(i) .lt. 50*degree_radian) ) then
+       !if ( (i .eq. 5) .and. (lat(i) .gt. -69*degree_radian .and. lat(i) .lt. -67*degree_radian) .and. & 
+          !(lon(i) .gt. 40*degree_radian .and. lon(i) .lt. 42*degree_radian) ) then    
+         !if (var_t(i,k) .gt. 0.) then 
+	 !write (20,*)  dt/1800., lat(i)*(180./pi), lon(i)*(180./pi), i,l,k, tau(i,l,k), mom_flux(i,l,k), & 
+           !            ubi(i,k), c_speed(i,l), c_i(i,l,k), m(i,l,k), gw_t(i,l,k), gw_frq(i,l,k)                  
+	  !endif     
+        !endif
+   !    enddo
+   !  enddo 
+   !enddo 
+
+ !do i=1,ncol        
+ !do k = 2, pver
+       !!if ( (lat(i) .lt. -60*degree_radian) .and. (lon(i) .lt. 50*degree_radian) ) then  
+ !       if ( (i .eq. 5) .and. (lat(i) .gt. -69*degree_radian .and. lat(i) .lt. -67*degree_radian) .and. & 
+ !         (lon(i) .gt. 40*degree_radian .and. lon(i) .lt. 42*degree_radian) ) then 
+ !        if (var_t(i,k) .gt. 0.) then    
+ !	   write (40,*)  dt/1800., lat(i)*(180./pi), lon(i)*(180./pi), i, k, brnt_v(i,k-1), egwdffi(i,k), var_t(i,k), & 
+  !                    icount(i,k), icount_nonzero(i,k), icount_no_w(i,k)
+	  !!write (60,*)  dt, k, zm(i,k)
+ !        endif
+ !      endif
+ !   enddo 
+ !enddo
+  
 
  !Compute K_e (energy flux due to waves) and xi (instability parameter)
  do i=1,ncol
