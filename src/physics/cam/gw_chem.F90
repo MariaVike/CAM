@@ -126,6 +126,8 @@ use gw_utils, only: midpoint_interp
   real(r8), parameter :: brnt_v_sq_min = 5.e-5_r8
   ! Environmental lapse-rate: -dT/dz
   real(r8) :: gamma_env(ncol,pver)
+  ! Min value for dT/dz
+  real(r8) :: min_dtdz(ncol,pver)
 
   !counters to count number of waves at each vertical level
   real(r8), dimension (ncol,pver) :: icount, icount_no_w, icount_nonzero
@@ -144,11 +146,16 @@ use gw_utils, only: midpoint_interp
 
  !Compute Brunt_vaisala freq at interfaces using mid-poit temperatures (s-1)
    do k = pver-1,1,-1
-      dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1)) 
+      dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1))  !!we are using t at mid-points so dtdz is computed at interfaces
       gamma_env(:,k)=-dtdz(:,k)
       brnt_v_sq(:,k)=gravit/ti(:,k+1)*(gamma_ad - gamma_env(:,k))
       brnt_v(:,k)=(max(brnt_v_sq_min, brnt_v_sq(:,k)))**0.5
    enddo
+ !Bound dT/dz using the min value for the Brunt vaisala freq
+   do k =  pver-1,1,-1
+      min_dtdz(:,k)=brnt_v_sq_min*(ti(:,k+1)/gravit)-gamma_ad
+      dtdz(:,k)=max(min_dtdz(:,k), dtdz(:,k))
+   enddo 
 
  !Compute the coriolis frequency (rad/s) and set it to 2pi/24h for equatorial regions
   where (abs(lat) <= 30._r8*degree_radian)
@@ -164,10 +171,6 @@ use gw_utils, only: midpoint_interp
       delta_z(:,k)=zi(:,k)-zi(:,k+1) !we are at interfaces so start from pver instead of pver+1  			            
    enddo   
 
- !Compute Dt/Dz (K/m) for later computation of Var(T)
-   do k =  pver-1,1,-1 !!NB midpoint array length is pver / or: kwave_level-2,1,-1 midpoint arrays are always -1 shorter than interface
-      dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1)) !we are using t at mid-points so dtdz is computed at interfaces
-   enddo 
  
   !Find lowest level for computation of k_wave
   do k=1,pver+1
@@ -243,9 +246,17 @@ use gw_utils, only: midpoint_interp
   nstep = get_nstep()
 
  
- open(unit=20, file='lat_67S_lon41E_waves_damping')
+ !open(unit=20, file='lat_67S_lon41E_waves_damping')
+ !open(unit=20, file='lat_75S_lon166E_waves_damping')
+ !open(unit=20, file='lat_30S_lon48W_waves_damping')
+ open(unit=20, file='lat_40N_lon137W_waves_damping')
+ !open(unit=20, file='lat_35N_lon57W_waves_damping')
     !!write (20,*)  'dt, i, l, k, tau, mom_flux, ubi, c, ci, m, gw_t, gwfrq'
- open(unit=40, file='lat_67S_lon41E_varT_damping')
+ !open(unit=40, file='lat_67S_lon41E_varT_damping')
+ !open(unit=40, file='lat_75S_lon166E_varT_damping')
+ !open(unit=40, file='lat_30S_lon48W_varT_damping')
+ open(unit=40, file='lat_40N_lon137W_varT_damping')
+ !open(unit=40, file='lat_35N_lon57W_varT_damping')
     !!write (40,*)  'dt, i, k, N, Kzz, var_t, icount_waves, icount_nonzero, icount_no_w'
   !!open(unit=60, file='lat_67S_lon41E_zm')
 
@@ -260,10 +271,18 @@ use gw_utils, only: midpoint_interp
 
 
   do i=1,ncol
-     if (nstep .eq. 0) then
-       !if ( lat(i)  .lt. -69*degree_radian) then  
-       if ( (i .eq. 5) .and. (lat(i) .gt. -69*degree_radian .and. lat(i) .lt. -67*degree_radian) .and. & 
-          (lon(i) .gt. 40*degree_radian .and. lon(i) .lt. 42*degree_radian) ) then  
+     if (nstep .eq. 0) then 
+       !if ( (i .eq. 5) .and. (lat(i) .gt. -69*degree_radian .and. lat(i) .lt. -67*degree_radian) .and. & 
+       !   (lon(i) .gt. 40*degree_radian .and. lon(i) .lt. 42*degree_radian) ) then  
+       !if ( (i .eq. 3) .and. (lat(i) .gt. -76*degree_radian .and. lat(i) .lt. -73*degree_radian) .and. & 
+       !   (lon(i) .gt. 163*degree_radian .and. lon(i) .lt. 170*degree_radian) ) then
+       !if ( (i .eq. 11) .and. (lat(i) .gt. -30*degree_radian .and. lat(i) .lt. -29*degree_radian) .and. & 
+       !    (lon(i) .gt. 310*degree_radian .and. lon(i) .lt. 313*degree_radian) ) then
+       if ( (i .eq. 10) .and. (lat(i) .gt. 39*degree_radian .and. lat(i) .lt. 41*degree_radian) .and.  &
+         (lon(i) .gt. 221*degree_radian .and. lon(i) .lt. 224*degree_radian) ) then
+       !if ( (i .eq. 10) .and. (lat(i) .gt. 35*degree_radian .and. lat(i) .lt. 36*degree_radian) .and.  &
+       ! (lon(i) .gt. 302*degree_radian .and. lon(i) .lt. 304*degree_radian) ) then
+       
          do l = -band%ngwv, band%ngwv
           do k = 2, pver
            if (var_t(i,k) .gt. 0.) then 
@@ -278,10 +297,18 @@ use gw_utils, only: midpoint_interp
 
 
  do i=1,ncol 
-  if (nstep .eq. 0) then 
-   !if ( lat(i)  .lt. -69*degree_radian) then  
-   if ( (i .eq. 5) .and. (lat(i) .gt. -69*degree_radian .and. lat(i) .lt. -67*degree_radian) .and. & 
-      (lon(i) .gt. 40*degree_radian .and. lon(i) .lt. 42*degree_radian) ) then       
+  if (nstep .eq. 0) then   
+   !if ( (i .eq. 5) .and. (lat(i) .gt. -69*degree_radian .and. lat(i) .lt. -67*degree_radian) .and. & 
+   !   (lon(i) .gt. 40*degree_radian .and. lon(i) .lt. 42*degree_radian) ) then       
+   !if  ( (i .eq. 3) .and. (lat(i) .gt. -76*degree_radian .and. lat(i) .lt. -73*degree_radian) .and. & 
+   !     (lon(i) .gt. 163*degree_radian .and. lon(i) .lt. 170*degree_radian) ) then
+   !if ( (i .eq. 11) .and. (lat(i) .gt. -30*degree_radian .and. lat(i) .lt. -29*degree_radian) .and. & 
+   !     (lon(i) .gt. 310*degree_radian .and. lon(i) .lt. 313*degree_radian) ) then
+   if ( (i .eq. 10) .and. (lat(i) .gt. 39*degree_radian .and. lat(i) .lt. 41*degree_radian) .and.  &
+         (lon(i) .gt. 221*degree_radian .and. lon(i) .lt. 224*degree_radian) ) then
+   !if ( (i .eq. 10) .and. (lat(i) .gt. 35*degree_radian .and. lat(i) .lt. 36*degree_radian) .and.  &
+   !     (lon(i) .gt. 302*degree_radian .and. lon(i) .lt. 304*degree_radian) ) then
+       
         do k = 2, pver
           if (var_t(i,k) .gt. 0.) then  
  	   write (40,*)  nstep, lat(i)*(180./pi), lon(i)*(180./pi), i, k, brnt_v(i,k-1), egwdffi(i,k), var_t(i,k), & 
@@ -464,7 +491,7 @@ enddo
       lmbd_z_star(i)=(2._r8*pi)*sqrt( (1._r8/alpha)*normalized_varT(i) + 1/(2._r8*m_b_sq) )
       k_e(i)=normalized_varT(i)*( (4.*f_n(i)*gamma_ad)/ti(i) )*(lmbd_z_star(i)/inertial_prd(i))
       xi(i)=alpha/4. + alpha/2. *log( (m_b_sq/alpha)*normalized_varT(i) + 0.5)
-
+      xi(i)=min(0.99, xi(i)) !should not happen, but bound xi so that xi .ge. 1 cannot exist 
      else
       k_e(i)=0._r8
       xi(i)=0._r8
