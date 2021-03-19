@@ -278,6 +278,8 @@ use physconst, only: gravit
   real(r8), parameter :: alpha=1./8.
   !Upper and lower limit for normalized temperature variance
   real(r8) :: upper_limit, lower_limit
+  ! Min value for dT/dz
+  real(r8) :: min_dtdz(ncol,pver)
 
   !Temporary values used for calculations locally
   real(r8), dimension(ncol,pver+1) :: g_NT_sq
@@ -364,6 +366,11 @@ enddo
       dtdz(:,k)=(t(:,k)-t(:,k+1))/(zm(:,k)-zm(:,k+1)) !we are using t at mid-points so dtdz is computed 
       		     			              !at interfaces where Var(T') is defined 
    enddo   
+ !Bound dT/dz using the min value for the Brunt vaisala freq
+   do k =  pver-1,1,-1
+      min_dtdz(:,k)=brnt_v_sq_min*(ti(:,k+1)/gravit)-gamma_ad
+      dtdz(:,k)=max(min_dtdz(:,k), dtdz(:,k))
+   enddo 
 
  !Compute K_e (energy flux due to waves) and xi (instability parameter)
  do i=1,ncol
