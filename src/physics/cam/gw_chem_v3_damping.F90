@@ -183,7 +183,9 @@ use gw_utils, only: midpoint_interp
  
   !Find lowest level for computation of k_wave
   do k=1,pver+1
-     if (pref_edge(k) .lt. 100._r8) then !below 1hPa ~ 50km
+     !if (pref_edge(k) .lt. 100._r8) then !below 1hPa ~ 50km
+     !if (pref_edge(k) .lt. 40._r8) then !below 0.04hPa ~ 70km
+     if (pref_edge(k) .lt. 200000._r8) then !below 200hPa ~ 12km
        kwave_level=k
      endif
   enddo
@@ -239,7 +241,7 @@ use gw_utils, only: midpoint_interp
    ENDIF
  ENDDO  
 
- !set variables at model top (k=1) and below 50 km to  zero
+ !set variables at model top (k=1) and below k_wave_level to  zero
   k_wave(:,1)=0._r8
   xi(:,1)=0._r8
   k_e(:,1)=0._r8
@@ -248,90 +250,6 @@ use gw_utils, only: midpoint_interp
   xi(:,kwave_level:)=0._r8
   k_e(:,kwave_level:)=0._r8
   var_t(:,kwave_level:)=0._r8
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Open files and write variables wavenumber by wavenumber !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
- 
- !get time-step number 
-  nstep = get_nstep()
-
- 
- !open(unit=20, file='lat_67S_lon41E_waves_damping')
- !open(unit=20, file='lat_75S_lon166E_waves_damping')
- !open(unit=20, file='lat_30S_lon48W_waves_damping')
- open(unit=20, file='lat_40N_lon137W_waves_damping')
- !open(unit=20, file='lat_35N_lon57W_waves_damping')
-    !!write (20,*)  'dt, i, l, k, tau, mom_flux, ubi, c, ci, m, gw_t, gwfrq'
- !open(unit=40, file='lat_67S_lon41E_varT_damping')
- !open(unit=40, file='lat_75S_lon166E_varT_damping')
- !open(unit=40, file='lat_30S_lon48W_varT_damping')
- open(unit=40, file='lat_40N_lon137W_varT_damping')
- !open(unit=40, file='lat_35N_lon57W_varT_damping')
-    !!write (40,*)  'dt, i, k, N, Kzz, var_t, icount_waves, icount_nonzero, icount_no_w'
-  !!open(unit=60, file='lat_67S_lon41E_zm')
-
- !in order to output vertical prfiles complete tau_dmp array with un-damped tau values below 50 km and compute undpamed mom_flux
-  tau_dmp(:,:,kwave_level:)=tau(:,:,kwave_level:)
-  do k=2, pver
-   do l = -band%ngwv, band%ngwv
-         mom_flux_undmp(:,l,k)=tau(:,l,k)/rhoi(:,k)
-     enddo
-  enddo
-
-
-
-  do i=1,ncol
-     if (nstep .eq. 0) then 
-       !if ( (i .eq. 5) .and. (lat(i) .gt. -69*degree_radian .and. lat(i) .lt. -67*degree_radian) .and. & 
-       !   (lon(i) .gt. 40*degree_radian .and. lon(i) .lt. 42*degree_radian) ) then  
-       !if ( (i .eq. 3) .and. (lat(i) .gt. -76*degree_radian .and. lat(i) .lt. -73*degree_radian) .and. & 
-       !   (lon(i) .gt. 163*degree_radian .and. lon(i) .lt. 170*degree_radian) ) then
-       !if ( (i .eq. 11) .and. (lat(i) .gt. -30*degree_radian .and. lat(i) .lt. -29*degree_radian) .and. & 
-       !    (lon(i) .gt. 310*degree_radian .and. lon(i) .lt. 313*degree_radian) ) then
-       if ( (i .eq. 10) .and. (lat(i) .gt. 39*degree_radian .and. lat(i) .lt. 41*degree_radian) .and.  &
-         (lon(i) .gt. 221*degree_radian .and. lon(i) .lt. 224*degree_radian) ) then
-       !if ( (i .eq. 10) .and. (lat(i) .gt. 35*degree_radian .and. lat(i) .lt. 36*degree_radian) .and.  &
-       ! (lon(i) .gt. 302*degree_radian .and. lon(i) .lt. 304*degree_radian) ) then
-       
-         do l = -band%ngwv, band%ngwv
-          do k = 2, pver
-           if (var_t(i,k) .gt. 0.) then 
-	   write (20,*)  nstep,lat(i)*(180./pi), lon(i)*(180./pi), i,l,k, tau(i,l,k), tau_dmp(i,l,k), mom_flux(i,l,k), & 
-                         mom_flux_undmp(i,l,k), ubi(i,k), c_speed(i,l), c_i(i,l,k), m(i,l,k), gw_t(i,l,k), gw_frq(i,l,k)    
-           endif              
-          enddo
-        enddo 
-      endif  
-    endif   
- enddo 
-
-
- do i=1,ncol 
-  if (nstep .eq. 0) then   
-   !if ( (i .eq. 5) .and. (lat(i) .gt. -69*degree_radian .and. lat(i) .lt. -67*degree_radian) .and. & 
-   !   (lon(i) .gt. 40*degree_radian .and. lon(i) .lt. 42*degree_radian) ) then       
-   !if  ( (i .eq. 3) .and. (lat(i) .gt. -76*degree_radian .and. lat(i) .lt. -73*degree_radian) .and. & 
-   !     (lon(i) .gt. 163*degree_radian .and. lon(i) .lt. 170*degree_radian) ) then
-   !if ( (i .eq. 11) .and. (lat(i) .gt. -30*degree_radian .and. lat(i) .lt. -29*degree_radian) .and. & 
-   !     (lon(i) .gt. 310*degree_radian .and. lon(i) .lt. 313*degree_radian) ) then
-   if ( (i .eq. 10) .and. (lat(i) .gt. 39*degree_radian .and. lat(i) .lt. 41*degree_radian) .and.  &
-         (lon(i) .gt. 221*degree_radian .and. lon(i) .lt. 224*degree_radian) ) then
-   !if ( (i .eq. 10) .and. (lat(i) .gt. 35*degree_radian .and. lat(i) .lt. 36*degree_radian) .and.  &
-   !     (lon(i) .gt. 302*degree_radian .and. lon(i) .lt. 304*degree_radian) ) then
-       
-        do k = 2, pver
-          if (var_t(i,k) .gt. 0.) then  
- 	   write (40,*)  nstep, lat(i)*(180./pi), lon(i)*(180./pi), i, k, brnt_v(i,k-1), egwdffi(i,k), var_t(i,k), & 
-                     icount(i,k), icount_nonzero(i,k), icount_no_w(i,k)
-	  !!write (60,*)  dt, k, zm(i,k)
-          endif
-        enddo
-       endif
-     endif
- enddo
-
-
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 end subroutine effective_gw_diffusivity
 

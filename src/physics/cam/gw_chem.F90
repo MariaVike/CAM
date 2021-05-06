@@ -1,10 +1,10 @@
 module gw_chem
 
 !
-! This module contains code to compute the wave‐driven constituent transport 
+! This module contains code to compute the diffusion of atmospheric constituents 
 ! due to non-breaking gravity waves (Gardner et al, ESS, 2019 ; Gardner et al, JGR, 2018).
 ! Here we compute the effective wave diffusivity (K_wave) as a function of the 
-! eddy diffusivity (Kzz) and of thevariances of the temperature and lapse rate fluctuations
+! eddy diffusivity (Kzz) and of the variance of the gw temperature perturbations
 !
 
 use gw_utils,     only: r8
@@ -14,7 +14,7 @@ use cam_logfile,  only: iulog
 use ref_pres,     only: pref_edge
 use time_manager, only: get_nstep
 use physics_types, only: physics_state
-use ppgrid,        only: begchunk, endchunk
+use linear_1d_operators, only: TriDiagDecomp
 
 implicit none
 private
@@ -27,16 +27,19 @@ contains
 
 !==========================================================================
 
-subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt,    &
-           t, rhoi, nm, ni, c_speed, tau, egwdffi, ubi, k_wave, xi, k_e,  & 
-           zm, zi, var_t, dtdz, brnt_v, lat, lon, kwvrdg)
+subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt, t, rhoi, nm, ni,        &
+           c_speed, tau, egwdffi, ubi, q, dse, dttke, tend_level, vramp, k_wave, xi,     &  
+           k_e, zm, zi, var_t, dtdz, brnt_v, k_tot, dttdf, ttgw, qtgw, lat, lon, kwvrdg)
 !-----------------------------------------------------------------------
-! Compute K_wave (wave effective diffusivity) etc...
-! ....
+! Compute K_wave (wave effective diffusivity), Ke (wave ebergy flux) and 
+! instability parameter (xi). Define a new total diffusivity (K_tot) as a
+! function of Kzz, k_wave and xi to solve the diffusion equation for atmospheric constituents. 
 !-----------------------------------------------------------------------
 use gw_common, only: GWBand, pver, pi
 use physconst, only: cpair, cpairv, gravit
 use gw_utils, only: midpoint_interp
+use vdiff_lu_solver, only: fin_vol_lu_decomp
+use gw_diffusion, only: gw_ediff, gw_diff_tend
 !------------------------------Arguments--------------------------------
   ! Column dimension.
   integer, intent(in) :: ncol
@@ -70,11 +73,22 @@ use gw_utils, only: midpoint_interp
   real(r8), intent(in) :: lat(:)
   ! Longitude in radians.
   real(r8), intent(in) :: lon(:)
+  ! Lowest level where wind tendencies are calculated.
+  integer, intent(in) :: tend_level(ncol)
+  ! Constituent array.
+  real(r8), intent(in) :: q(:,:,:)
+  ! Dry static energy.
+  real(r8), intent(in) :: dse(ncol,pver)
+  ! Coefficient to ramp down diffusion coeff.
+  real(r8), pointer, intent(in) :: vramp(:)
+  ! Temperature tendencies from  kinetic energy.
+  real(r8), intent(in) :: dttke(ncol,pver)
 
 
   real(r8), intent(out) :: k_wave(ncol,pver) !total over entire wave spectrum for each GW source
   real(r8), intent(out) :: xi(ncol,pver)
   real(r8), intent(out) :: k_e(ncol,pver)
+  real(r8), intent(out) :: k_tot(ncol,pver)
 
   ! Variance of T'
   real(r8), intent(out)  :: var_t(ncol,pver)
@@ -83,11 +97,18 @@ use gw_utils, only: midpoint_interp
   ! Interface Brunt-Vaisala frequency computed locally.
   real(r8), intent (out) :: brnt_v(ncol,pver)
 
+  ! Gravity wave heating tendency.
+  real(r8), intent(out) :: ttgw(ncol,pver)   	     
+  ! Gravity wave constituent tendency.
+  real(r8), intent(out) :: qtgw(:,:,:)	    
+  ! Temperature tendencies from diffusion 
+  real(r8), intent(out) :: dttdf(ncol,pver)        
+
   
   !---------------------------Local storage-------------------------------
 
   ! Level, wavenumber, and column loop indices.
-  integer  :: k, l, i
+  integer  :: k, l, i, m_q
   ! Bottom level for computation of k_wave
   integer  :: kwave_level
   ! current timestep number
@@ -137,6 +158,32 @@ use gw_utils, only: midpoint_interp
   real(r8) :: dmp_sum(ncol,-band%ngwv:band%ngwv)
   real(r8) :: dmp_factor(ncol,-band%ngwv:band%ngwv,pver+1)
 
+  ! (dp/dz)^2 == (gravit*rho)^2
+  real(r8) :: dpidz_sq(ncol,pver+1)
+  ! Lowest tendency level.
+  integer :: kbot_tend
+  ! Interface levels for gravity wave sources.
+  integer, parameter :: ktop = 1
+  ! LU decomposition.
+  type(TriDiagDecomp) :: decomp 
+
+  logical :: do_vertical_diffusion
+
+  !Initialize arrays
+  ttgw = 0._r8
+  dttdf = 0._r8
+  qtgw = 0._r8
+  k_wave=0._r8
+  k_tot=0._r8
+  dtdz=0._r8
+  brnt_v=0._r8
+  brnt_v_sq=0._r8
+  xi=0._r8
+  k_e=0._r8
+  var_t=0._r8
+
+ !by default vertical diffusion is always done
+ do_vertical_diffusion = .true.
 
  !compute adiabatic lapse rate(K/m) and R/Cp ratio
  gamma_ad=gravit/cpair
@@ -230,6 +277,7 @@ use gw_utils, only: midpoint_interp
    ENDIF
  ENDDO  
 
+
  !set variables at model top (k=1) and below 50 km to  zero
   k_wave(:,1)=0._r8
   xi(:,1)=0._r8
@@ -240,6 +288,54 @@ use gw_utils, only: midpoint_interp
   k_e(:,kwave_level:)=0._r8
   var_t(:,kwave_level:)=0._r8
 
+!==================================================================
+  IF (do_vertical_diffusion) then
+
+ 
+  ! Calculate (dp/dz)^2.
+   dpidz_sq = rhoi*gravit
+   dpidz_sq = dpidz_sq*dpidz_sq
+
+  !lowest level where tendencies are defined
+   kbot_tend = maxval(tend_level)
+
+  !define K_tot
+   where (k_wave .ne. 0._r8)
+         k_tot=(1._r8+xi)*egwdffi !+k_wave
+   elsewhere
+         k_tot=egwdffi
+   end where
+
+
+   ! Decompose the diffusion matrix using k_tot
+   decomp = fin_vol_lu_decomp(dt, p%section([1,ncol],[ktop,kbot_tend]), &
+        coef_q_diff=k_tot(:,ktop:kbot_tend+1)*dpidz_sq(:,ktop:kbot_tend+1))
+
+
+   ! Calculate tendency on each constituent.
+     do m_q = 1, size(q,3)
+
+        call gw_diff_tend(ncol, pver, kbot_tend, ktop, q(:,:,m_q), &
+             dt, decomp, qtgw(:,:,m_q))
+
+     enddo
+
+     ! Calculate tendency from diffusing dry static energy (dttdf).
+     call gw_diff_tend(ncol, pver, kbot_tend, ktop, dse, dt, decomp, dttdf)
+
+     !calculate total temperature tendency (dttke has been alredy computed in gw_common)
+     ttgw = dttke + dttdf
+
+     if (associated(vramp)) then
+       do k = ktop, kbot_tend
+          ttgw(:,k) = ttgw(:,k) * vramp(k)
+       enddo
+     endif
+
+    ! Deallocate decomp.
+     call decomp%finalize()
+
+  ENDIF
 
 end subroutine effective_gw_diffusivity
 
@@ -249,8 +345,8 @@ subroutine compute_kwave (ncol, band, lambda_h, ti, rhoi, brnt_v, egwdffi,     &
            	     dtdz, var_t, k_e, xi, k_wave, lambda_wave, gw_frq,gw_t,c_i,m,icount,icount_no_w,icount_nonzero, kwvrdg)  
 
 !-----------------------------------------------------------------------
-! Compute Var(T') and quantities tht depends on it such as and K_e...
-! ....
+! Compute Var(T') and quantities tht depends on it such as and K_e and xi.
+! Thus compute K_wave. 
 !-----------------------------------------------------------------------
 use gw_common, only: GWBand, pver, pi
 use physconst, only: gravit

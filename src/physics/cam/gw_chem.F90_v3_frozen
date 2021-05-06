@@ -11,6 +11,7 @@ use gw_utils,     only: r8
 use coords_1d,    only: Coords1D
 use spmd_utils,   only: masterproc
 use cam_logfile,  only: iulog
+use ref_pres,     only: pref_edge
 
 implicit none
 private
@@ -84,6 +85,8 @@ use gw_utils, only: midpoint_interp
 
   ! Level, wavenumber, and column loop indices.
   integer  :: k, l, i
+  ! Bottom level for computation of k_wave
+  integer  :: kwave_level
   real(r8) :: icount, times
   ! Gas consant for dry air (m2 K-1 s-2)
   real(r8), parameter :: R_air = 287._r8
@@ -111,6 +114,7 @@ use gw_utils, only: midpoint_interp
   real(r8), parameter :: brnt_v_sq_min = 5.e-5_r8
   ! Environmental lapse-rate: -dT/dz
   real(r8) :: gamma_env(ncol,pver)
+  
 
 
   ! Temporary values used for calculations
@@ -139,6 +143,13 @@ use gw_utils, only: midpoint_interp
   !Compute inertial period (s)
   inertial_prd= 2._r8*pi/coriolis_f
  
+
+  !Find lowest level for computation of k_wave
+  do k=1,pver+1
+     if (pref_edge(k) .lt. 100._r8) then !below 1hPa ~ 50km
+       kwave_level=k
+     endif
+  enddo
  
 do i=1,ncol
  do k = 2, pver !disregard first and last (pver+1) interface values, the rest of variables are defined with centred differences of mid-points values
@@ -181,17 +192,23 @@ enddo
  ENDIF
 
 
- !Finally compute k_wave
-   do k = 2, pver
+ !Finally compute k_wave between 50km and model top
+   !!do k = 2, pver
+   do k=2, kwave_level-1
       one_min_xi(:,k) =1.-xi(:,k)    
       k_wave(:,k)=(1./one_min_xi(:,k))*( xi(:,k)*egwdffi(:,k)+ & 
                    (cp_r-1.)*k_e(:,k) )
    enddo
 
-   !set variables at model top (k=1) to  zero
-   k_wave(:,1)=0._r8
-   xi(:,1)=0._r8
-   k_e(:,1)=0._r8
+  !set variables at model top (k=1) and below 50 km to  zero
+  k_wave(:,1)=0._r8
+  xi(:,1)=0._r8
+  k_e(:,1)=0._r8
+  var_t(:,1)=0._r8
+  k_wave(:,kwave_level:)=0._r8
+  xi(:,kwave_level:)=0._r8
+  k_e(:,kwave_level:)=0._r8
+  var_t(:,kwave_level:)=0._r8
 
 end subroutine effective_gw_diffusivity
 
@@ -219,8 +236,6 @@ use physconst, only: gravit
   real(r8), intent(in) :: ti(ncol,pver+1)
   ! Interface density (Kg m-3)
   real(r8), intent(in) :: rhoi(ncol,pver+1)
-  ! Interface Brunt-Vaisala frequency.
-  !real(r8), intent(in) ::  ni(ncol,pver+1)
   ! Effective gravity wave diffusivity at interfaces.
   real(r8), intent(in) :: egwdffi(ncol,pver+1)
   ! Midpoint and Interface altitudes above ground (m).
@@ -280,6 +295,8 @@ use physconst, only: gravit
   real(r8) :: upper_limit, lower_limit
   ! Min value for dT/dz
   real(r8) :: min_dtdz(ncol,pver)
+  ! Min value for Brunt_vaisala frequenncy squared
+  real(r8), parameter :: brnt_v_sq_min = 5.e-5_r8
 
   !Temporary values used for calculations locally
   real(r8), dimension(ncol,pver+1) :: g_NT_sq

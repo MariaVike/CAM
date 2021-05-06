@@ -270,10 +270,10 @@ end subroutine gw_prof
 
 subroutine gw_drag_prof(ncol, band, p, src_level, tend_level, dt, &
      t, vramp,   &
-     piln, rhoi,    nm,   ni,  ubm,  ubi,  xv,    yv,   &
-     effgw,      c, kvtt, q,   dse,  tau,  utgw,  vtgw, &
-     ttgw, qtgw, egwdffi,   gwut, dttdf, dttke, ro_adjust, &
-     kwvrdg, satfac_in, lapply_effgw_in, lapply_vdiff )
+     piln, rhoi,    nm,   ni,  ubm,  ubi,  xv,    yv,     &
+     effgw,      c, kvtt, q,   dse,  tau,  utgw,  vtgw,   &
+     egwdffi, gwut, dttke, dttdf, ttgw, qtgw,  ro_adjust, &
+     kwvrdg, satfac_in, lapply_effgw_in, lapply_vdiff, use_gw_chem )
 
   !-----------------------------------------------------------------------
   ! Solve for the drag profile from the multiple gravity wave drag
@@ -338,9 +338,9 @@ subroutine gw_drag_prof(ncol, band, p, src_level, tend_level, dt, &
   ! Zonal/meridional wind tendencies.
   real(r8), intent(out) :: utgw(ncol,pver), vtgw(ncol,pver)
   ! Gravity wave heating tendency.
-  real(r8), intent(out) :: ttgw(ncol,pver)
+  real(r8), intent(out), optional :: ttgw(ncol,pver)   	     !MVG (made it optional)
   ! Gravity wave constituent tendency.
-  real(r8), intent(out) :: qtgw(:,:,:)
+  real(r8), intent(out), optional :: qtgw(:,:,:)	     !MVG (made it optional)
 
   ! Effective gravity wave diffusivity at interfaces.
   real(r8), intent(out) :: egwdffi(ncol,pver+1)
@@ -349,7 +349,7 @@ subroutine gw_drag_prof(ncol, band, p, src_level, tend_level, dt, &
   real(r8), intent(out) :: gwut(ncol,pver,-band%ngwv:band%ngwv)
 
   ! Temperature tendencies from diffusion and kinetic energy.
-  real(r8), intent(out) :: dttdf(ncol,pver)
+  real(r8), intent(out), optional :: dttdf(ncol,pver)         !MVG (made it optional) 
   real(r8), intent(out) :: dttke(ncol,pver)
 
   ! Adjustment parameter for IGWs.
@@ -367,6 +367,9 @@ subroutine gw_drag_prof(ncol, band, p, src_level, tend_level, dt, &
        satfac_in
 
   logical, intent(in), optional :: lapply_effgw_in, lapply_vdiff
+
+  !variables for gw_chem  !MVG 
+  logical,  intent(in),  optional :: use_gw_chem 
 
   !---------------------------Local storage-------------------------------
 
@@ -440,10 +443,7 @@ subroutine gw_drag_prof(ncol, band, p, src_level, tend_level, dt, &
   gwut = 0._r8
 
   dttke = 0._r8
-  ttgw = 0._r8
-
-  dttdf = 0._r8
-  qtgw = 0._r8
+  
 
   ! Workaround floating point exception issues on Intel by initializing
   ! everything that's first set in a where block.
@@ -674,13 +674,27 @@ subroutine gw_drag_prof(ncol, band, p, src_level, tend_level, dt, &
   end if
   !===========================================
 
-  if (do_vertical_diffusion) then
+  IF (do_vertical_diffusion) then
+
+   if (present(use_gw_chem)) then !MVG
+    if (use_gw_chem) then  
+     ! Calculate effective diffusivity but NOT LU decomposition (this will be calculate later using kzz+kwave) 
+     call gw_ediff (ncol, pver, band%ngwv, kbot_tend, ktop, tend_level, &
+          gwut, ubm, nm, rhoi, dt, prndl, gravit, p, c, vramp, &
+          egwdffi, use_gw_chem=use_gw_chem)
+
+    ELSE !e.g. for inertial gws 
+
+     ttgw = 0._r8
+     dttdf = 0._r8
+     qtgw = 0._r8
 
      ! Calculate effective diffusivity and LU decomposition for the
      ! vertical diffusion solver.
      call gw_ediff (ncol, pver, band%ngwv, kbot_tend, ktop, tend_level, &
           gwut, ubm, nm, rhoi, dt, prndl, gravit, p, c, vramp, &
           egwdffi, decomp, ro_adjust=ro_adjust)
+
 
      ! Calculate tendency on each constituent.
      do m = 1, size(q,3)
@@ -693,26 +707,44 @@ subroutine gw_drag_prof(ncol, band, p, src_level, tend_level, dt, &
      ! Calculate tendency from diffusing dry static energy (dttdf).
      call gw_diff_tend(ncol, pver, kbot_tend, ktop, dse, dt, decomp, dttdf)
 
-  endif
+    endif
+   endif
 
-  ! Evaluate second temperature tendency term: Conversion of kinetic
-  ! energy into thermal.
-  do l = -band%ngwv, band%ngwv
-     do k = ktop, kbot_tend
-        dttke(:,k) = dttke(:,k) - (ubm(:,k) - c(:,l)) * gwut(:,k,l)
-     end do
-  end do
+  ENDIF
 
-  ttgw = dttke + dttdf
+  IF (present(use_gw_chem)) then !MVG
+    IF (use_gw_chem) then  
+  
+    ! Evaluate second temperature tendency term: Conversion of kinetic
+    ! energy into thermal. The other term (dttdf) is evaluated in gw_chem
+    do l = -band%ngwv, band%ngwv
+       do k = ktop, kbot_tend
+          dttke(:,k) = dttke(:,k) - (ubm(:,k) - c(:,l)) * gwut(:,k,l)
+       end do
+    end do
 
-  if (associated(vramp)) then
-     do k = ktop, kbot_tend
-        ttgw(:,k) = ttgw(:,k) * vramp(k)
-     enddo
-  endif
+  ELSE 
 
-  ! Deallocate decomp.
-  call decomp%finalize()
+   ! Evaluate second temperature tendency term: Conversion of kinetic
+   ! energy into thermal.
+   do l = -band%ngwv, band%ngwv
+      do k = ktop, kbot_tend
+         dttke(:,k) = dttke(:,k) - (ubm(:,k) - c(:,l)) * gwut(:,k,l)
+      end do
+   end do
+
+   ttgw = dttke + dttdf
+
+   if (associated(vramp)) then
+      do k = ktop, kbot_tend
+         ttgw(:,k) = ttgw(:,k) * vramp(k)
+      enddo
+   endif
+
+   ! Deallocate decomp.
+   call decomp%finalize()
+  ENDIF
+ ENDIF
 
 end subroutine gw_drag_prof
 
