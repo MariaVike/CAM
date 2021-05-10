@@ -184,8 +184,8 @@ use gw_utils, only: midpoint_interp
   !Find lowest level for computation of k_wave
   do k=1,pver+1
      !if (pref_edge(k) .lt. 100._r8) then !below 1hPa ~ 50km
-     !if (pref_edge(k) .lt. 40._r8) then !below 0.04hPa ~ 70km
-     if (pref_edge(k) .lt. 200000._r8) then !below 200hPa ~ 12km
+     !if (pref_edge(k) .lt. 4._r8) then !below 0.04hPa ~ 70km
+     if (pref_edge(k) .lt. 20000._r8) then !below 200hPa ~ 12km
        kwave_level=k
      endif
   enddo

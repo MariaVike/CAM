@@ -301,7 +301,7 @@ use gw_diffusion, only: gw_ediff, gw_diff_tend
 
   !define K_tot
    where (k_wave .ne. 0._r8)
-         k_tot=(1._r8+xi)*egwdffi !+k_wave
+         k_tot=(1._r8+xi)*egwdffi+k_wave
    elsewhere
          k_tot=egwdffi
    end where
