@@ -28,7 +28,7 @@ contains
 !==========================================================================
 
 subroutine effective_gw_diffusivity (ncol, band, lambda_h, p, dt, t, rhoi, nm, ni,        &
-           c_speed, tau, egwdffi, ubi, q, dse, dttke, tend_level, vramp, k_wave, xi,     &  
+           c_speed, tau, gwut, egwdffi, ubi, q, dse, dttke, tend_level, vramp, k_wave, xi,     &  
            k_e, zm, zi, var_t, dtdz, brnt_v, k_tot, dttdf, ttgw, qtgw, lat, lon, kwvrdg)
 !-----------------------------------------------------------------------
 ! Compute K_wave (wave effective diffusivity), Ke (wave ebergy flux) and 
@@ -65,6 +65,8 @@ use gw_diffusion, only: gw_ediff, gw_diff_tend
   real(r8), intent(in) :: c_speed(ncol,-band%ngwv:band%ngwv)
   ! Wave Reynolds stress.
   real(r8), intent(in) :: tau(ncol,-band%ngwv:band%ngwv,pver+1)
+  ! Gravity wave wind tendency for each wave.
+  real(r8), intent(in) :: gwut(ncol,pver,-band%ngwv:band%ngwv)
   ! Effective gravity wave diffusivity at interfaces.
   real(r8), intent(in) :: egwdffi(ncol,pver+1)
   ! Midpoint and Interface altitudes above ground (m).
@@ -91,7 +93,7 @@ use gw_diffusion, only: gw_ediff, gw_diff_tend
   real(r8), intent(out) :: k_tot(ncol,pver)
 
   ! Variance of T'
-  real(r8), intent(out)  :: var_t(ncol,pver)
+  real(r8), intent(out)  :: var_t(ncol,pver+1)
   ! Dt/Dz environment 
   real(r8), intent(out)  :: dtdz(ncol, pver)
   ! Interface Brunt-Vaisala frequency computed locally.
@@ -221,9 +223,7 @@ use gw_diffusion, only: gw_ediff, gw_diff_tend
  
   !Find lowest level for computation of k_wave
   do k=1,pver+1
-     !if (pref_edge(k) .lt. 100._r8) then !below 1hPa ~ 50km
-     !if (pref_edge(k) .lt. 4._r8) then !below 0.04hPa ~ 70km
-     if (pref_edge(k) .lt. 20000._r8) then !below 200hPa ~ 12km
+     if (pref_edge(k) .lt. 100._r8) then !below 1hPa ~ 50km
        kwave_level=k
      endif
   enddo
@@ -242,12 +242,12 @@ use gw_diffusion, only: gw_ediff, gw_diff_tend
         ! compute k_wave with un-damped tau at first level 
         if (present(kwvrdg)) then          
   		call compute_kwave (ncol, band, lambda_h, ti(:,k), rhoi(:,k), brnt_v(:,k-1), egwdffi(:,k),     &
-           	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), kwave_level,  &
+           	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), gwut(:,k,:), kwave_level,  &
            	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k), &
 		     gw_frq(:,:,k),gw_t(:,:,k),c_i(:,:,k),m(:,:,k),icount(:,k),icount_no_w(:,k),icount_nonzero(:,k), kwvrdg=kwvrdg)      
  	else
   		call compute_kwave (ncol, band, lambda_h, ti(:,k), rhoi(:,k), brnt_v(:,k-1), egwdffi(:,k),     &
-           	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), kwave_level,  &
+           	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), gwut(:,k,:), kwave_level,  &
            	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k), &
 		     gw_frq(:,:,k),gw_t(:,:,k),c_i(:,:,k),m(:,:,k),icount(:,k),icount_no_w(:,k),icount_nonzero(:,k)) 
  	endif
@@ -260,27 +260,18 @@ use gw_diffusion, only: gw_ediff, gw_diff_tend
          dmp_sum(:,l)=dmp_sum(:,l)+dmp_factor(:,l,k)     !sum all damping coefficients to calculate tau profile as we go up
 	 tau_dmp(:,l,k)=tau(:,l,k)*exp(-2.*dmp_sum(:,l)) 
          mom_flux(:,l,k)=tau_dmp(:,l,k)/rhoi(:,k) 
-
- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-         !where (tau_dmp(:,l,k) .lt. 10)
-         !  mom_flux(:,l,k)=tau_dmp(:,l,k)/rhoi(:,k)
-         !elsewhere
-         ! mom_flux(:,l,k)=0.
-         !end where 
- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
       enddo
          
 
 	 !compute k_wave using damped tau values
         if (present(kwvrdg)) then          
   		call compute_kwave (ncol, band, lambda_h, ti(:,k), rhoi(:,k), brnt_v(:,k-1), egwdffi(:,k),     &
-           	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), kwave_level,  &
+           	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), gwut(:,k,:), kwave_level,  &
            	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k), &
 		     gw_frq(:,:,k),gw_t(:,:,k),c_i(:,:,k),m(:,:,k),icount(:,k),icount_no_w(:,k),icount_nonzero(:,k), kwvrdg=kwvrdg)          
  	else
   		call compute_kwave (ncol, band, lambda_h, ti(:,k), rhoi(:,k), brnt_v(:,k-1), egwdffi(:,k),     &
-           	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), kwave_level,  &
+           	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi(:,k), mom_flux(:,:,k), gwut(:,k,:), kwave_level,  &
            	     dtdz(:,k-1), var_t(:,k), k_e(:,k), xi(:,k), k_wave(:,k), lambda_wave(:,:,k), &
 		     gw_frq(:,:,k),gw_t(:,:,k),c_i(:,:,k),m(:,:,k),icount(:,k),icount_no_w(:,k),icount_nonzero(:,k)) 
  	endif 
@@ -299,13 +290,6 @@ use gw_diffusion, only: gw_ediff, gw_diff_tend
   k_e(:,kwave_level:)=0._r8
   var_t(:,kwave_level:)=0._r8
 
- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  !set k_wave =0 at poles
-  where (abs(lat) => 60._r8*degree_radian)
-   k_wave(:,:)=0._r8
-   xi(:,:)=0._r8
-  end where
- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !==================================================================
   IF (do_vertical_diffusion) then
 
@@ -320,7 +304,6 @@ use gw_diffusion, only: gw_ediff, gw_diff_tend
   !define K_tot
    where (k_wave .ne. 0._r8)
          k_tot=(1._r8+xi)*egwdffi+k_wave
-         !k_tot=min(1000., k_wave)
    elsewhere
          k_tot=egwdffi
    end where
@@ -360,7 +343,7 @@ end subroutine effective_gw_diffusivity
 
 !==========================================================================
 subroutine compute_kwave (ncol, band, lambda_h, ti, rhoi, brnt_v, egwdffi,     &
-           	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi, mom_flux, kwave_level,  &
+           	     cp_r, gamma_ad, coriolis_f, inertial_prd, c_speed, ubi, mom_flux, gwut, kwave_level,  &
            	     dtdz, var_t, k_e, xi, k_wave, lambda_wave, gw_frq,gw_t,c_i,m,icount,icount_no_w,icount_nonzero, kwvrdg)  
 
 !-----------------------------------------------------------------------
@@ -394,6 +377,8 @@ use physconst, only: gravit
   real(r8), intent(in) :: mom_flux(ncol,-band%ngwv:band%ngwv)
   ! Wave phase speeds for each column.
   real(r8), intent(in) :: c_speed(ncol,-band%ngwv:band%ngwv)
+  ! Gravity wave wind tendency for each wave.
+  real(r8), intent(in) :: gwut(ncol,-band%ngwv:band%ngwv)
   ! Brunt Vaisala frequency
   real(r8), intent(in) :: brnt_v(ncol)   
   ! Environmental pase rate (K/m)
@@ -434,7 +419,7 @@ use physconst, only: gravit
   !Buoyancy vertical wavenumber squared (1/m2)
   real(r8), parameter :: m_b_sq=(2*pi/1000.)**2.	
   !Tunable parameter to bound instability parameter
-  real(r8), parameter :: alpha=1./8., alpha_dwn=0. !0.33
+  real(r8), parameter :: alpha=1./8.
   !Upper and lower limit for normalized temperature variance
   real(r8) :: upper_limit, lower_limit
   ! ubi-c
@@ -449,10 +434,12 @@ use physconst, only: gravit
 !compute gw intrinsic speed, frequency and vertical wavenumber
 do i=1,ncol
   do l = -band%ngwv, band%ngwv       
+
 	
          c_i(i,l)=c_speed(i,l)-ubi(i) 
-
-         IF (c_i(i,l) .ne. 0) then
+         
+         IF ( (c_i(i,l) .ne. 0) .and. (gwut(i,l) .eq. 0.) ) then    !not at a critical level (at critical levels where c_i=0 (i.e. c=ubi) tau=0)
+								    !AND not in a saturation region
 	   gw_frq(i,l)=abs(c_i(i,l))/lambda_h
 
            if (present(kwvrdg)) then
@@ -460,13 +447,15 @@ do i=1,ncol
 	   else
             m(i,l)= (brnt_v(i)*band%kwv)/gw_frq(i,l)
 	   endif
-         ELSE
-          !at critical levels where c_i=0 (i.e. c=ubi) tau=0
-	  !set everything else to zero too otherwise lateron in the
-	  !computation of m we get division by zeros and generation of NaNs and Inf
+           
+           ELSE
+          !Do not take into account contributions from waves at critical levels or that are saturating. 
+	  !Set everything else to zero, otherwise lateron in the
+	  !computation of m we get division by zeros and generation of Infs.  
           gw_frq(i,l)=0._r8  
 	  m(i,l)=0._r8
-         ENDIF
+
+       ENDIF
       
   enddo
 enddo
@@ -479,7 +468,7 @@ do i=1,ncol
   icount_nonzero(i)=0.
   do l = -band%ngwv, band%ngwv
 
-      ! exclude critical levels where c_i=0 and thus gw_freq=0 and m=0
+      ! exclude critical levels where c_i=0 and thus gw_freq=0 and m=0, and waves that are dissipting (for which gwut non zero)
       IF (gw_frq(i,l) .ne. 0._r8) then           
 	lambda_z(i,l)= (2.*pi)/m(i,l)
 
@@ -521,7 +510,7 @@ enddo
      upper_limit= (alpha/m_b_sq)*(exp((2._r8/alpha) - 0.5) - 0.5)
      if ( (normalized_varT(i) .gt. lower_limit) .and. (normalized_varT(i) .lt. upper_limit) ) then 
       lmbd_z_star(i)=(2._r8*pi)*sqrt( (1._r8/alpha)*normalized_varT(i) + 1/(2._r8*m_b_sq) )
-      k_e(i)=normalized_varT(i)*( (4.*f_n(i)*gamma_ad*(1.-2.*alpha_dwn))/ti(i) )*(lmbd_z_star(i)/inertial_prd(i)) !alpha_dwn=0.33
+      k_e(i)=normalized_varT(i)*( (4.*f_n(i)*gamma_ad)/ti(i) )*(lmbd_z_star(i)/inertial_prd(i))
       xi(i)=alpha/4. + alpha/2. *log( (m_b_sq/alpha)*normalized_varT(i) + 0.5)
       xi(i)=min(0.99, xi(i)) !should not happen, but bound xi so that xi .ge. 1 cannot exist 
      else
